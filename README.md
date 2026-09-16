@@ -51,6 +51,9 @@ That's it - the mock is now listening on `http://localhost:4100`.
 - [x] `SIMULATE_TIMEOUT` - makes every request hang with no response, to test how px-torre-core
       behaves during a real Autentique outage.
 - [x] `X-Simulate-Error` header - forces any of the error responses listed below on demand.
+- [x] `GET /sign/:publicId` - the page a signer's `link.short_link` actually opens: shows the
+      document and signer, and has a button that calls `/simulate/:documentId/sign` for you,
+      instead of needing to script the HTTP request by hand.
 - [ ] `signature.viewed` / `document.finished` webhook variants.
 - [ ] The company co-sign flow.
 
@@ -63,6 +66,7 @@ That's it - the mock is now listening on `http://localhost:4100`.
 | GET    | `/files/:documentId/original.pdf` | The original PDF, as it was uploaded.                  |
 | GET    | `/files/:documentId/signed.pdf`   | The signed PDF (404 until the document is signed).     |
 | POST   | `/simulate/:documentId/sign`  | Simulates the driver signing. Body: `{"cpf": "12345678901"}`. |
+| GET    | `/sign/:publicId`             | The page a signer's `link.short_link` opens - has a button that calls the endpoint above. |
 
 ## Simulating errors
 
@@ -198,4 +202,5 @@ src/
     signing.js              marks a document signed (stamp + save)
     webhook.js              builds and signs the signature.accepted webhook
     downloads.js            saves PDFs to ~/Downloads/autentique-mock/
+    signPage.js             renders the /sign/:publicId HTML page
 ```

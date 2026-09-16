@@ -5,9 +5,10 @@ const { simulatedError, documentNotFoundError } = require('./lib/errors');
 const { handleCreateDocument } = require('./graphql/createDocument');
 const { handleDocumentQuery } = require('./graphql/documentQuery');
 const { handleSignDocument } = require('./graphql/signDocument');
-const { getDocument } = require('./store');
+const { getDocument, findBySignerPublicId } = require('./store');
 const { markDocumentSigned } = require('./lib/signing');
 const { sendSignatureWebhook } = require('./lib/webhook');
+const { renderSignPage } = require('./lib/signPage');
 
 const PORT = process.env.PORT || 4000;
 const upload = multer();
@@ -145,6 +146,22 @@ app.post('/simulate/:documentId/sign', express.json(), async (req, res) => {
     } catch (error) {
         res.status(500).json({ errors: [{ message: `Failed to simulate signature: ${error.message}` }] });
     }
+});
+
+// This is what a signer's `link.short_link` points to in real Autentique - a
+// hosted page where they review and sign. Here it's a stand-in with one
+// button that calls the same /simulate/:documentId/sign endpoint above.
+app.get('/sign/:publicId', (req, res) => {
+    const document = findBySignerPublicId(req.params.publicId);
+
+    if (!document) {
+        res.status(404).send('Signer not found.');
+
+        return;
+    }
+
+    const signer = document.signatures.find((s) => s.public_id === req.params.publicId);
+    res.type('html').send(renderSignPage(document, signer));
 });
 
 app.listen(PORT, () => {
