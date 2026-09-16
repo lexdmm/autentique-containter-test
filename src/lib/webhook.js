@@ -1,8 +1,36 @@
 const crypto = require('crypto');
+const { WEBHOOK_SECRET, PX_TORRE_CORE_WEBHOOK_URL } = require('./config');
 
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'local-mock-secret';
-const PX_TORRE_CORE_WEBHOOK_URL = process.env.PX_TORRE_CORE_WEBHOOK_URL
-    || 'http://host.docker.internal:8000/api/webhooks/documents/signature';
+/**
+ * The real webhook's `data` for a signature.* event is the full Signature
+ * resource (per Autentique's docs): public_id, object, user{name,email,cpf,
+ * birthday}, document, action, and Event-typed viewed/signed/rejected/
+ * biometric_* fields. One deliberate deviation: `signed` here is a plain ISO
+ * string, not an Event object like the docs show - px-torre-core's own
+ * AutentiqueSignatureService reads `data.signed` straight into a `signed_at`
+ * column (`$signatureEvent['data']['signed'] ?? now()`), so a nested object
+ * would misfeed it. Matching the doc's literal shape would mean feeding the
+ * one real consumer of this field a value it can't use.
+ */
+function buildSignatureData({ documentId, signer, cpf, email }) {
+    return {
+        object: 'signature',
+        public_id: signer?.public_id ?? null,
+        document: documentId,
+        action: { name: signer?.action ?? 'SIGN' },
+        signed: new Date().toISOString(),
+        viewed: null,
+        rejected: null,
+        biometric_approved: null,
+        biometric_rejected: null,
+        user: {
+            cpf,
+            email: email ?? signer?.email ?? null,
+            name: signer?.name ?? null,
+            birthday: null,
+        },
+    };
+}
 
 /**
  * Builds Autentique's documented webhook envelope and signs the exact bytes
@@ -47,4 +75,4 @@ async function sendSignatureWebhook({ type, data }) {
     }
 }
 
-module.exports = { sendSignatureWebhook, PX_TORRE_CORE_WEBHOOK_URL };
+module.exports = { sendSignatureWebhook, buildSignatureData, PX_TORRE_CORE_WEBHOOK_URL };

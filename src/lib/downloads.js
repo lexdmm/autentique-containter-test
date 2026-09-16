@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-
-const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR || '/app/downloads';
+const { DOWNLOADS_DIR } = require('./config');
 
 function saveOriginalPdf(documentId, buffer) {
     fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });

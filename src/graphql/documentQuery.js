@@ -1,7 +1,6 @@
 const { getDocument } = require('../store');
 const { documentNotFoundError } = require('../lib/errors');
-
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'http://localhost:4100';
+const { PUBLIC_BASE_URL } = require('../lib/config');
 
 /**
  * px-torre-core sends two distinct literal queries against `document(id)`

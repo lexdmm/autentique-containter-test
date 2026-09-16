@@ -7,10 +7,10 @@ const { handleDocumentQuery } = require('./graphql/documentQuery');
 const { handleSignDocument } = require('./graphql/signDocument');
 const { getDocument, findBySignerPublicId } = require('./store');
 const { markDocumentSigned } = require('./lib/signing');
-const { sendSignatureWebhook } = require('./lib/webhook');
+const { sendSignatureWebhook, buildSignatureData } = require('./lib/webhook');
 const { renderSignPage } = require('./lib/signPage');
+const { PORT } = require('./lib/config');
 
-const PORT = process.env.PORT || 4000;
 const upload = multer();
 
 const app = express();
@@ -72,6 +72,7 @@ app.post('/graphql', upload.single('file'), express.json(), async (req, res) => 
 
         res.status(400).json({ errors: [{ message: 'Unknown or not-yet-implemented operation' }] });
     } catch (error) {
+        console.error(error);
         res.status(500).json({ errors: [{ message: `Mock crashed handling this request: ${error.message}` }] });
     }
 });
@@ -134,16 +135,12 @@ app.post('/simulate/:documentId/sign', express.json(), async (req, res) => {
         const signer = document.signatures[0];
         const webhookResult = await sendSignatureWebhook({
             type: 'signature.accepted',
-            data: {
-                document: document.id,
-                public_id: signer?.public_id ?? null,
-                signed: new Date().toISOString(),
-                user: { cpf, email: email ?? signer?.email ?? null },
-            },
+            data: buildSignatureData({ documentId: document.id, signer, cpf, email }),
         });
 
         res.json({ signed: true, webhook: webhookResult });
     } catch (error) {
+        console.error(error);
         res.status(500).json({ errors: [{ message: `Failed to simulate signature: ${error.message}` }] });
     }
 });

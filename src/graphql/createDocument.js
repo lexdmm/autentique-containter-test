@@ -2,13 +2,12 @@ const crypto = require('crypto');
 const { saveDocument } = require('../store');
 const { validationError } = require('../lib/errors');
 const { saveOriginalPdf } = require('../lib/downloads');
+const { PUBLIC_BASE_URL } = require('../lib/config');
 
 // Matches the examples in Autentique's docs (e.g. "+5554999999999"): a leading
 // "+", then 8-15 digits. There is no documented regex, this is a best-effort
 // approximation of a loose E.164 format.
 const PHONE_PATTERN = /^\+[1-9]\d{7,14}$/;
-
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'http://localhost:4100';
 
 function findInvalidPhone(signers) {
     for (let index = 0; index < signers.length; index += 1) {
