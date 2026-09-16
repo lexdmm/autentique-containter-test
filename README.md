@@ -15,9 +15,14 @@ Work in progress. Implemented so far:
 - Project scaffold (Express + Docker).
 - `SIMULATE_TIMEOUT` toggle to reproduce a real Autentique outage (the server holds the connection
   open and never responds).
+- `createDocument` mutation: accepts the same multipart upload px-torre-core sends, validates the
+  file and signer phone numbers, stores the document in memory, and saves a copy of the original
+  PDF to `~/Downloads/autentique-mock/`.
+- Error simulation via the `X-Simulate-Error` request header: `unauthorized`, `invalid_phone`,
+  `must_be_a_file`, `rate_limit`.
 
-Not implemented yet: `createDocument`, `signDocument`, the `document` query, file serving, the
-signed-document audit-page stamp, the signature webhook, and error simulation.
+Not implemented yet: `signDocument`, the `document` query, file serving, the signed-document
+audit-page stamp, and the signature webhook.
 
 ## Running
 
@@ -30,9 +35,10 @@ curl http://localhost:4100/health
 
 Copy `.env.example` to `.env` and adjust as needed:
 
-| Variable          | Default | Description                                                                 |
-|--------------------|---------|-------------------------------------------------------------------------------|
-| `SIMULATE_TIMEOUT` | `false` | When `true`, every request hangs with no response, simulating a real outage. |
+| Variable            | Default                 | Description                                                                 |
+|----------------------|-------------------------|-------------------------------------------------------------------------------|
+| `SIMULATE_TIMEOUT`   | `false`                 | When `true`, every request hangs with no response, simulating a real outage. |
+| `PUBLIC_BASE_URL`    | `http://localhost:4100` | Base URL used to build each signer's `link.short_link`.                      |
 
 Changing `.env` requires recreating the container: `docker compose up -d`.
 

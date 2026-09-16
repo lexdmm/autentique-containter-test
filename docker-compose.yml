@@ -2,11 +2,13 @@ services:
     autentique-mock:
         build: .
         container_name: autentique-mock
+        user: '${HOST_UID:-1000}:${HOST_GID:-1000}'
         ports:
             - '4100:4000'
         environment:
             - PORT=4000
             - SIMULATE_TIMEOUT=${SIMULATE_TIMEOUT:-false}
+            - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:4100}
         volumes:
             - ./src:/app/src
             - ${HOME}/Downloads/autentique-mock:/app/downloads
