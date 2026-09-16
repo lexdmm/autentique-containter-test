@@ -1,0 +1,12 @@
+services:
+    autentique-mock:
+        build: .
+        container_name: autentique-mock
+        ports:
+            - '4100:4000'
+        environment:
+            - PORT=4000
+            - SIMULATE_TIMEOUT=${SIMULATE_TIMEOUT:-false}
+        volumes:
+            - ./src:/app/src
+            - ${HOME}/Downloads/autentique-mock:/app/downloads

@@ -1,0 +1,13 @@
+{
+  "name": "autentique-mock",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mock local da API GraphQL da Autentique, para testar a integracao do px-torre-core sem depender da nuvem real.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
