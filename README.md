@@ -121,6 +121,7 @@ container: `docker compose up -d`.
 | Variável                | Padrão                                          | Pra que serve                                                          |
 |--------------------------|---------------------------------------------------|--------------------------------------------------------------------------|
 | `SIMULATE_TIMEOUT`       | `false`                                            | `true` faz toda requisição ficar pendurada pra sempre — simula uma queda. |
+| `AUTENTIQUE_API_TOKEN`   | `fake-local-token`                                 | Token Bearer aceito pelo endpoint GraphQL local.                          |
 | `PUBLIC_BASE_URL`        | `http://localhost:4100`                            | Usado pra montar o `link.short_link` de cada signatário e as URLs de `files.*`. |
 | `HOST_UID` / `HOST_GID`  | `1000` / `1000`                                    | O seu próprio `id -u` / `id -g` — mantém os arquivos salvos em Downloads como seus, não de `root`. |
 | `WEBHOOK_SECRET`         | `local-mock-secret`                                | Precisa ser exatamente igual ao segredo que sua aplicação usa pra validar a assinatura do webhook. |
@@ -135,7 +136,7 @@ resto do projeto:
 docker compose exec autentique-mock npm test
 ```
 
-São 21 testes (`node --test`, o runner nativo do Node, sem dependência nova) cobrindo a lógica que
+São 27 testes (`node --test`, o runner nativo do Node) cobrindo a lógica que
 realmente importa: validação de telefone e arquivo no `createDocument`, os dois formatos da query
 `document`, todos os erros simuláveis, a assinatura HMAC do webhook (inclusive o caso de falha de
 rede), e o carimbo de PDF — incluindo o teste que reproduz exatamente o bug de PDF inválido

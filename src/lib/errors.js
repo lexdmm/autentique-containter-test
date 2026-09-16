@@ -7,8 +7,16 @@
  * evidence available, since Autentique never documents it.
  */
 
-function validationError(message, validation) {
-    return { status: 200, body: { errors: [{ message, extensions: { validation } }] } };
+function validationError(validation) {
+    return {
+        status: 200,
+        body: {
+            errors: [{
+                message: 'validation',
+                extensions: { validation, category: 'validation' },
+            }],
+        },
+    };
 }
 
 function unauthorizedError() {
@@ -35,14 +43,10 @@ function signatureNotFoundError() {
 
 const SIMULATABLE_ERRORS = {
     unauthorized: () => unauthorizedError(),
-    invalid_phone: () => validationError(
-        'Validation failed for the field [signers].',
-        { 'signers.0.phone': ['must_be_a_valid_phone_number'] }
-    ),
-    must_be_a_file: () => validationError(
-        'Validation failed for the field [file].',
-        { file: ['must_be_a_file'] }
-    ),
+    invalid_phone: () => validationError({
+        'signers.0.phone': ['must_be_a_valid_phone_number'],
+    }),
+    must_be_a_file: () => validationError({ file: ['must_be_a_file'] }),
     rate_limit: () => rateLimitError(),
     document_not_found: () => documentNotFoundError(),
     signature_not_found: () => signatureNotFoundError(),

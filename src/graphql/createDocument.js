@@ -52,16 +52,15 @@ function handleCreateDocument(variables, file) {
     const signersInput = variables.signers || [];
 
     if (!file) {
-        return validationError('Validation failed for the field [file].', { file: ['must_be_a_file'] });
+        return validationError({ file: ['must_be_a_file'] });
     }
 
     const invalidPhoneIndex = findInvalidPhone(signersInput);
 
     if (invalidPhoneIndex !== -1) {
-        return validationError(
-            'Validation failed for the field [signers].',
-            { [`signers.${invalidPhoneIndex}.phone`]: ['must_be_a_valid_phone_number'] }
-        );
+        return validationError({
+            [`signers.${invalidPhoneIndex}.phone`]: ['must_be_a_valid_phone_number'],
+        });
     }
 
     const documentId = crypto.randomUUID();

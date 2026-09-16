@@ -6,10 +6,11 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "DOWNLOADS_DIR=/tmp/autentique-mock-test node --test src"
+    "test": "DOWNLOADS_DIR=/tmp/autentique-mock-test node --test src/*.test.js src/**/*.test.js"
   },
   "dependencies": {
     "express": "^4.19.2",
+    "graphql": "^16.14.2",
     "multer": "^1.4.5-lts.1",
     "pdf-lib": "^1.17.1"
   }

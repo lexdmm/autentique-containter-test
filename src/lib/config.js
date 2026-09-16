@@ -1,4 +1,5 @@
 module.exports = {
+    API_TOKEN: process.env.AUTENTIQUE_API_TOKEN || 'fake-local-token',
     PORT: process.env.PORT || 4000,
     PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || 'http://localhost:4100',
     WEBHOOK_SECRET: process.env.WEBHOOK_SECRET || 'local-mock-secret',

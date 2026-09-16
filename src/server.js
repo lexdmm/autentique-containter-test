@@ -1,166 +1,249 @@
 const express = require('express');
 const multer = require('multer');
+const { graphql } = require('graphql');
 const simulateTimeout = require('./middleware/simulateTimeout');
-const { simulatedError, documentNotFoundError } = require('./lib/errors');
-const { handleCreateDocument } = require('./graphql/createDocument');
-const { handleDocumentQuery } = require('./graphql/documentQuery');
-const { handleSignDocument } = require('./graphql/signDocument');
+const { simulatedError, documentNotFoundError, unauthorizedError } = require('./lib/errors');
 const { getDocument, findBySignerPublicId } = require('./store');
 const { markDocumentSigned } = require('./lib/signing');
 const { sendSignatureWebhook, buildSignatureData } = require('./lib/webhook');
 const { renderSignPage } = require('./lib/signPage');
-const { PORT } = require('./lib/config');
+const { API_TOKEN, PORT } = require('./lib/config');
+const { schema, rootValue } = require('./graphql/schema');
 
 const upload = multer();
+const FORBIDDEN_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
 
-const app = express();
+function logError(error, context) {
+    console.error(JSON.stringify({
+        level: 'error',
+        context,
+        message: error.message,
+        stack: error.stack,
+    }));
+}
 
-app.use(simulateTimeout);
-
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
-});
-
-// createDocument arrives as multipart (operations+map+file); signDocument and
-// the document query arrive as plain JSON. Multer skips non-multipart
-// requests without consuming the body, so express.json() still sees them.
-app.post('/graphql', upload.single('file'), express.json(), async (req, res) => {
-    const simulated = simulatedError(req);
-
-    if (simulated) {
-        res.status(simulated.status).json(simulated.body);
+function authenticateGraphql(req, res, next) {
+    if (req.get('authorization') !== `Bearer ${API_TOKEN}`) {
+        const unauthorized = unauthorizedError();
+        res.status(unauthorized.status).json(unauthorized.body);
 
         return;
     }
 
-    let query;
-    let variables;
+    next();
+}
 
-    if (req.body.operations) {
+function assignPath(target, path, value) {
+    const segments = path.split('.');
+
+    if (segments[0] !== 'variables'
+        || segments.some((segment) => FORBIDDEN_PATH_SEGMENTS.has(segment))) {
+        throw new Error('Invalid multipart map path');
+    }
+
+    let cursor = target;
+
+    for (let index = 0; index < segments.length - 1; index += 1) {
+        const segment = segments[index];
+
+        if (cursor[segment] === undefined || cursor[segment] === null) {
+            cursor[segment] = /^\d+$/.test(segments[index + 1]) ? [] : {};
+        }
+
+        cursor = cursor[segment];
+    }
+
+    cursor[segments.at(-1)] = value;
+}
+
+function parseGraphqlRequest(req) {
+    if (!req.body.operations) {
+        return req.body;
+    }
+
+    const operation = JSON.parse(req.body.operations);
+    const fileMap = JSON.parse(req.body.map || '{}');
+    const filesByField = new Map((req.files || []).map((file) => [file.fieldname, file]));
+
+    for (const [fieldName, paths] of Object.entries(fileMap)) {
+        const file = filesByField.get(fieldName);
+
+        if (!file || !Array.isArray(paths)) {
+            throw new Error('Invalid multipart map');
+        }
+
+        paths.forEach((path) => assignPath(operation, path, file));
+    }
+
+    return operation;
+}
+
+function formatExecutionResult(result) {
+    if (!result.errors) {
+        return result;
+    }
+
+    return {
+        ...result,
+        errors: result.errors.map((error) => {
+            if (error.originalError && Object.keys(error.extensions).length === 0) {
+                logError(error.originalError, 'graphql-resolver');
+
+                return {
+                    message: 'Internal server error',
+                    locations: error.locations,
+                    path: error.path,
+                    extensions: { code: 'internal_server_error' },
+                };
+            }
+
+            return error.toJSON();
+        }),
+    };
+}
+
+function createApp() {
+    const app = express();
+
+    app.use(simulateTimeout);
+    app.use(express.json());
+
+    app.get('/health', (req, res) => {
+        res.json({ status: 'ok' });
+    });
+
+    app.post('/graphql', authenticateGraphql, upload.any(), async (req, res) => {
+        const simulated = simulatedError(req);
+
+        if (simulated) {
+            res.status(simulated.status).json(simulated.body);
+
+            return;
+        }
+
+        let operation;
+
         try {
-            ({ query, variables } = JSON.parse(req.body.operations));
+            operation = parseGraphqlRequest(req);
         } catch {
-            res.status(400).json({ errors: [{ message: 'Malformed operations payload' }] });
-
-            return;
-        }
-    } else {
-        ({ query, variables } = req.body);
-    }
-
-    try {
-        if (/\bcreateDocument\s*\(/.test(query)) {
-            const result = handleCreateDocument(variables, req.file);
-            res.status(result.status).json(result.body);
+            res.status(400).json({ errors: [{ message: 'Malformed GraphQL request payload' }] });
 
             return;
         }
 
-        if (/\bsignDocument\s*\(/.test(query)) {
-            const result = await handleSignDocument(variables);
-            res.status(result.status).json(result.body);
+        if (!operation?.query || typeof operation.query !== 'string') {
+            res.status(400).json({ errors: [{ message: 'GraphQL query is required' }] });
 
             return;
         }
 
-        if (/\bdocument\s*\(/.test(query)) {
-            const result = handleDocumentQuery(variables);
-            res.status(result.status).json(result.body);
-
-            return;
-        }
-
-        res.status(400).json({ errors: [{ message: 'Unknown or not-yet-implemented operation' }] });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ errors: [{ message: `Mock crashed handling this request: ${error.message}` }] });
-    }
-});
-
-app.get('/files/:documentId/original.pdf', (req, res) => {
-    const document = getDocument(req.params.documentId);
-
-    if (!document) {
-        res.sendStatus(404);
-
-        return;
-    }
-
-    res.type('application/pdf').send(document.originalFile);
-});
-
-app.get('/files/:documentId/signed.pdf', (req, res) => {
-    const document = getDocument(req.params.documentId);
-
-    if (!document || !document.signed) {
-        res.sendStatus(404);
-
-        return;
-    }
-
-    res.type('application/pdf').send(document.signedFile);
-});
-
-// Stands in for the driver actually opening the signature link and signing
-// for real on Autentique's side: marks the document signed, generates the
-// stamped PDF, and fires the same webhook Autentique would send afterwards.
-app.post('/simulate/:documentId/sign', express.json(), async (req, res) => {
-    const simulated = simulatedError(req);
-
-    if (simulated) {
-        res.status(simulated.status).json(simulated.body);
-
-        return;
-    }
-
-    const document = getDocument(req.params.documentId);
-
-    if (!document) {
-        res.status(404).json(documentNotFoundError().body);
-
-        return;
-    }
-
-    const { cpf, email } = req.body || {};
-
-    if (!cpf) {
-        res.status(400).json({ errors: [{ message: 'cpf is required to simulate a driver signature' }] });
-
-        return;
-    }
-
-    try {
-        await markDocumentSigned(document);
-
-        const signer = document.signatures[0];
-        const webhookResult = await sendSignatureWebhook({
-            type: 'signature.accepted',
-            data: buildSignatureData({ documentId: document.id, signer, cpf, email }),
+        const result = await graphql({
+            schema,
+            source: operation.query,
+            rootValue,
+            variableValues: operation.variables,
+            operationName: operation.operationName,
         });
 
-        res.json({ signed: true, webhook: webhookResult });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ errors: [{ message: `Failed to simulate signature: ${error.message}` }] });
-    }
-});
+        res.json(formatExecutionResult(result));
+    });
 
-// This is what a signer's `link.short_link` points to in real Autentique - a
-// hosted page where they review and sign. Here it's a stand-in with one
-// button that calls the same /simulate/:documentId/sign endpoint above.
-app.get('/sign/:publicId', (req, res) => {
-    const document = findBySignerPublicId(req.params.publicId);
+    app.get('/files/:documentId/original.pdf', (req, res) => {
+        const document = getDocument(req.params.documentId);
 
-    if (!document) {
-        res.status(404).send('Signer not found.');
+        if (!document) {
+            res.sendStatus(404);
 
-        return;
-    }
+            return;
+        }
 
-    const signer = document.signatures.find((s) => s.public_id === req.params.publicId);
-    res.type('html').send(renderSignPage(document, signer));
-});
+        res.type('application/pdf').send(document.originalFile);
+    });
 
-app.listen(PORT, () => {
-    process.stdout.write(`Autentique mock listening on port ${PORT}\n`);
-});
+    app.get('/files/:documentId/signed.pdf', (req, res) => {
+        const document = getDocument(req.params.documentId);
+
+        if (!document || !document.signed) {
+            res.sendStatus(404);
+
+            return;
+        }
+
+        res.type('application/pdf').send(document.signedFile);
+    });
+
+    app.post('/simulate/:documentId/sign', async (req, res) => {
+        const simulated = simulatedError(req);
+
+        if (simulated) {
+            res.status(simulated.status).json(simulated.body);
+
+            return;
+        }
+
+        const document = getDocument(req.params.documentId);
+
+        if (!document) {
+            res.status(404).json(documentNotFoundError().body);
+
+            return;
+        }
+
+        const { cpf, email } = req.body || {};
+
+        if (!cpf) {
+            res.status(400).json({ errors: [{ message: 'cpf is required to simulate a driver signature' }] });
+
+            return;
+        }
+
+        try {
+            await markDocumentSigned(document);
+
+            const signer = document.signatures[0];
+            const webhookResult = await sendSignatureWebhook({
+                type: 'signature.accepted',
+                data: buildSignatureData({ documentId: document.id, signer, cpf, email }),
+            });
+
+            res.json({ signed: true, webhook: webhookResult });
+        } catch (error) {
+            logError(error, 'simulate-signature');
+            res.status(500).json({ errors: [{ message: 'Failed to simulate signature' }] });
+        }
+    });
+
+    app.get('/sign/:publicId', (req, res) => {
+        const document = findBySignerPublicId(req.params.publicId);
+
+        if (!document) {
+            res.status(404).send('Signer not found.');
+
+            return;
+        }
+
+        const signer = document.signatures.find((item) => item.public_id === req.params.publicId);
+        res.type('html').send(renderSignPage(document, signer));
+    });
+
+    app.use((error, req, res, next) => {
+        if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+            res.status(400).json({ errors: [{ message: 'Malformed JSON request payload' }] });
+
+            return;
+        }
+
+        logError(error, 'http-request');
+        res.status(500).json({ errors: [{ message: 'Internal server error' }] });
+    });
+
+    return app;
+}
+
+if (require.main === module) {
+    createApp().listen(PORT, () => {
+        process.stdout.write(`Autentique mock listening on port ${PORT}\n`);
+    });
+}
+
+module.exports = { createApp };
