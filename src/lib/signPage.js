@@ -31,7 +31,7 @@ function renderSignPage(document, signer) {
     <p class="signed">This document is already signed.</p>
     <p><a href="/files/${escapeHtml(document.id)}/signed.pdf">Download signed PDF</a></p>
   ` : `
-    <label for="cpf">Signer's CPF (must match a real driver in px-torre-core, digits only)</label>
+    <label for="cpf">Signer's CPF (must match a real record in the app you're testing, digits only)</label>
     <input id="cpf" placeholder="12345678901" />
     <button id="submit">Simulate signature</button>
   `}

@@ -1,10 +1,10 @@
 /**
  * Error shapes below mirror Autentique's documented GraphQL error format
  * (errors[].message + errors[].extensions.validation.<path>). `invalid_phone`
- * is the one exception: it is not in the public docs, it comes straight from
- * how px-torre-core's AutentiqueIntegrationService already parses it
- * (signers.0.phone / must_be_a_valid_phone_number), which is the only real
- * evidence we have for that specific case.
+ * is the one exception: it is not in the public docs. This shape
+ * (signers.0.phone / must_be_a_valid_phone_number) comes from a real
+ * production app's error-handling code for this exact case - the only real
+ * evidence available, since Autentique never documents it.
  */
 
 function validationError(message, validation) {

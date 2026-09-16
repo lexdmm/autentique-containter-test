@@ -1,17 +1,17 @@
 # autentique-mock
 
 Um mock local e independente da API GraphQL da [Autentique](https://www.autentique.com.br). Ele
-existe para que o [px-torre-core](https://github.com/lexdmm/px-torre-core) possa ser desenvolvido e
-testado contra um fluxo de geração e assinatura de documentos **sem** depender da nuvem real da
-Autentique, sem precisar de uma conta de verdade, e sem nenhum risco de enviar um documento real
-pra uma pessoa real.
+existe para que qualquer aplicação que integre com a Autentique possa ser desenvolvida e testada
+contra um fluxo de geração e assinatura de documentos **sem** depender da nuvem real da Autentique,
+sem precisar de uma conta de verdade, e sem nenhum risco de enviar um documento real pra uma pessoa
+real.
 
 > **Isto não é um ambiente real da Autentique.** A Autentique é um SaaS fechado e pago, sem versão
 > self-hosted ou Docker disponível em lugar nenhum — não existe nada pra "instalar" localmente. O
 > que este repositório faz, em vez disso, é reproduzir, o mais fielmente possível conforme a
-> documentação pública, os requests e responses exatos que o px-torre-core envia e espera: mesmos
-> campos GraphQL, mesmo formato de erro, mesma assinatura de webhook. É um substituto, não uma
-> cópia.
+> documentação pública, os requests e responses exatos que a API real usa: mesmos campos GraphQL,
+> mesmo formato de erro, mesma assinatura de webhook. É um substituto, não uma cópia — e serve pra
+> qualquer projeto que fale com a Autentique, não só um específico.
 
 ## Conteúdo
 
@@ -22,12 +22,12 @@ pra uma pessoa real.
 - [Simulando erros](#simulando-erros)
 - [Configuração](#configuração)
 - [Testes](#testes)
-- [Conectando com o px-torre-core](#conectando-com-o-px-torre-core)
+- [Conectando com sua aplicação](#conectando-com-sua-aplicação)
 - [Estrutura do projeto](#estrutura-do-projeto)
 
 ## Começando rápido
 
-Você **não** precisa do px-torre-core rodando pra usar isso sozinho.
+Você **não** precisa de nenhuma outra aplicação rodando pra usar isso sozinho.
 
 ```bash
 docker compose up --build -d
@@ -39,30 +39,27 @@ Só isso — o mock já está escutando em `http://localhost:4100`.
 
 ## O que já está implementado
 
-- [x] Mutation `createDocument` — aceita o mesmo upload multipart que o px-torre-core envia, valida
-      o arquivo e o telefone de cada signatário, e salva uma cópia do PDF original em
-      `~/Downloads/autentique-mock/`.
-- [x] Query `document` — cobre os dois formatos que o px-torre-core pede (`GetDocumentFiles` e
-      `GetDocumentSignatureInfo`).
-- [x] Mutation `signDocument` — implementada por completude do contrato, mesmo o fluxo real de
-      assinatura do motorista no px-torre-core nunca chamando ela de fato.
-      (`AutentiqueDocumentService::signDocument` só atualiza a própria linha no banco do
-      px-torre-core; a mutation GraphQL só é usada no fluxo de co-assinatura da empresa, que este
-      mock não cobre.)
-- [x] Simulação de assinatura (`POST /simulate/:documentId/sign`) — substitui o motorista abrindo o
-      link e assinando de verdade: marca o documento como assinado, carimba uma página de auditoria
-      falsa "SIMULATED" no PDF, salva em `~/Downloads/autentique-mock/`, e dispara o mesmo webhook
-      `signature.accepted` que a Autentique enviaria, assinado do mesmo jeito que o px-torre-core
-      verifica.
-- [x] `SIMULATE_TIMEOUT` — faz toda requisição ficar pendurada sem resposta, pra testar como o
-      px-torre-core se comporta durante uma queda real da Autentique.
+- [x] Mutation `createDocument` — aceita o mesmo upload multipart que qualquer client GraphQL da
+      Autentique envia (padrão `operations` + `map` + `file`), valida o arquivo e o telefone de
+      cada signatário, e salva uma cópia do PDF original em `~/Downloads/autentique-mock/`.
+- [x] Query `document` — cobre tanto pedir só os arquivos (`files`) quanto só o status de
+      assinatura (`signatures`), na mesma resposta combinada.
+- [x] Mutation `signDocument` — implementada por completude do contrato: a API real usa essa
+      mutation pra registrar quando a conta da própria chave de API co-assina um documento.
+- [x] Simulação de assinatura (`POST /simulate/:documentId/sign`) — substitui um signatário abrindo
+      o link e assinando de verdade: marca o documento como assinado, carimba uma página de
+      auditoria falsa "SIMULATED" no PDF, salva em `~/Downloads/autentique-mock/`, e dispara o
+      mesmo webhook `signature.accepted` que a Autentique enviaria, assinado do mesmo jeito que a
+      documentação descreve.
+- [x] `SIMULATE_TIMEOUT` — faz toda requisição ficar pendurada sem resposta, pra testar como sua
+      aplicação se comporta durante uma queda real da Autentique.
 - [x] Header `X-Simulate-Error` — força qualquer uma das respostas de erro listadas abaixo, sob
       demanda.
 - [x] `GET /sign/:publicId` — a página que o `link.short_link` de um signatário de fato abre: mostra
       o documento e o signatário, e tem um botão que chama `/simulate/:documentId/sign` por você, em
       vez de precisar montar a requisição HTTP na mão.
 - [ ] Variações de webhook `signature.viewed` / `document.finished`.
-- [ ] O fluxo de co-assinatura da empresa.
+- [ ] O fluxo de co-assinatura da empresa (a conta da própria chave de API assinando).
 
 ## Fidelidade à documentação real
 
@@ -76,14 +73,13 @@ Tudo abaixo foi confirmado batendo exatamente, com duas exceções explicadas:
   Signature documentado: `object, public_id, document, action, viewed, rejected, biometric_*,
   user{name, email, cpf, birthday}`).
 - **Desvio deliberado** (ver `lib/webhook.js`): `data.signed` é um timestamp ISO simples, não o
-  objeto Event aninhado que a documentação mostra. O `AutentiqueSignatureService` do próprio
-  px-torre-core lê esse campo direto pra uma coluna `signed_at` — seguir o formato literal da doc
-  aí alimentaria o único consumidor real desse campo com um valor que ele não sabe processar, então
-  este mock mantém o formato que realmente funciona.
-- **Não existe na documentação pública, veio direto do código do px-torre-core**: o código de erro
-  `must_be_a_valid_phone_number` e o path `signers.N.phone`. Implementado exatamente como o
-  `AutentiqueIntegrationService::validateAutentiqueErrors` já processa isso — a única evidência
-  real disponível, já que a documentação da Autentique nunca menciona essa validação.
+  objeto Event aninhado que a documentação mostra. Muitas aplicações leem esse campo direto pra uma
+  coluna de data/hora — seguir o formato literal da doc quebraria esse padrão comum, então este mock
+  mantém o formato mais fácil de consumir.
+- **Não existe na documentação pública, veio de uma aplicação real em produção**: o código de erro
+  `must_be_a_valid_phone_number` e o path `signers.N.phone`. Implementado exatamente como uma
+  aplicação Laravel real em produção já processa esse erro — a única evidência real disponível, já
+  que a documentação da Autentique nunca menciona essa validação.
 - **Lacuna conhecida e assumida**: respostas de erro reais podem carregar um campo
   `extensions.category` junto de `extensions.validation`. A documentação menciona que ele existe
   mas não dá nenhum exemplo de valor, então ficou de fora em vez de eu chutar um valor.
@@ -96,13 +92,13 @@ Tudo abaixo foi confirmado batendo exatamente, com duas exceções explicadas:
 | POST   | `/graphql`                    | Endpoint GraphQL do mock (`createDocument`, `signDocument`, query `document`). |
 | GET    | `/files/:documentId/original.pdf` | O PDF original, exatamente como foi enviado.           |
 | GET    | `/files/:documentId/signed.pdf`   | O PDF assinado (404 até o documento ser assinado).     |
-| POST   | `/simulate/:documentId/sign`  | Simula a assinatura do motorista. Corpo: `{"cpf": "12345678901"}`. |
+| POST   | `/simulate/:documentId/sign`  | Simula a assinatura de um signatário. Corpo: `{"cpf": "12345678901"}`. |
 | GET    | `/sign/:publicId`             | A página que o `link.short_link` do signatário abre — tem um botão que chama o endpoint acima. |
 
 ## Simulando erros
 
 Envie um header `X-Simulate-Error` em qualquer requisição pra forçar uma dessas respostas em vez do
-fluxo normal — útil pra testar como o px-torre-core reage a uma falha real da Autentique:
+fluxo normal — útil pra testar como sua aplicação reage a uma falha real da Autentique:
 
 | Valor do header        | O que ele força                                              |
 |-------------------------|----------------------------------------------------------------|
@@ -122,13 +118,13 @@ curl http://localhost:4100/graphql -H "X-Simulate-Error: rate_limit" -F "operati
 Copie `.env.example` pra `.env` e ajuste o que precisar. Depois de qualquer mudança, recrie o
 container: `docker compose up -d`.
 
-| Variável                    | Padrão                                               | Pra que serve                                                          |
-|------------------------------|--------------------------------------------------------|--------------------------------------------------------------------------|
-| `SIMULATE_TIMEOUT`           | `false`                                                | `true` faz toda requisição ficar pendurada pra sempre — simula uma queda. |
-| `PUBLIC_BASE_URL`            | `http://localhost:4100`                                | Usado pra montar o `link.short_link` de cada signatário e as URLs de `files.*`. |
-| `HOST_UID` / `HOST_GID`      | `1000` / `1000`                                        | O seu próprio `id -u` / `id -g` — mantém os arquivos salvos em Downloads como seus, não de `root`. |
-| `WEBHOOK_SECRET`             | `local-mock-secret`                                    | Precisa ser exatamente igual ao `AUTENTIQUE_WEBHOOK_SECRET` do px-torre-core. |
-| `PX_TORRE_CORE_WEBHOOK_URL`  | `http://host.docker.internal:8080/api/webhooks/documents/signature` | Pra onde o webhook simulado é enviado. Ver seção abaixo. |
+| Variável                | Padrão                                          | Pra que serve                                                          |
+|--------------------------|---------------------------------------------------|--------------------------------------------------------------------------|
+| `SIMULATE_TIMEOUT`       | `false`                                            | `true` faz toda requisição ficar pendurada pra sempre — simula uma queda. |
+| `PUBLIC_BASE_URL`        | `http://localhost:4100`                            | Usado pra montar o `link.short_link` de cada signatário e as URLs de `files.*`. |
+| `HOST_UID` / `HOST_GID`  | `1000` / `1000`                                    | O seu próprio `id -u` / `id -g` — mantém os arquivos salvos em Downloads como seus, não de `root`. |
+| `WEBHOOK_SECRET`         | `local-mock-secret`                                | Precisa ser exatamente igual ao segredo que sua aplicação usa pra validar a assinatura do webhook. |
+| `WEBHOOK_TARGET_URL`     | `http://host.docker.internal:8080/api/webhooks/autentique` | Pra onde o webhook simulado é enviado. Ver seção abaixo. |
 
 ## Testes
 
@@ -145,14 +141,14 @@ realmente importa: validação de telefone e arquivo no `createDocument`, os doi
 rede), e o carimbo de PDF — incluindo o teste que reproduz exatamente o bug de PDF inválido
 derrubando o processo inteiro, encontrado e corrigido durante o desenvolvimento deste mock.
 
-## Conectando com o px-torre-core
+## Conectando com sua aplicação
 
-**Este repositório é totalmente independente do px-torre-core.** Ele não entra na rede Docker do
-px-torre-core, e não sabe os nomes dos containers dele — se você nunca tocar na seção abaixo, este
-mock continua funcionando sozinho pra qualquer coisa que não precise do px-torre-core reagir a ele
+**Este repositório é totalmente independente.** Ele não entra em nenhuma rede Docker de outro
+projeto, e não sabe o nome de nenhum container externo — se você nunca tocar na seção abaixo, este
+mock continua funcionando sozinho pra qualquer coisa que não precise da sua aplicação reagir a ele
 (inspecionar requisições, checar o carimbo no PDF, etc).
 
-Pra que os dois projetos realmente conversem entre si num teste local completo, eles se conectam
+Pra que os dois lados realmente conversem entre si num teste local completo, eles se conectam
 através de portas que cada um já expõe na sua máquina — não pela rede interna do Docker. Pense
 como dois apps separados no seu notebook conversando via `localhost`:
 
@@ -160,21 +156,21 @@ como dois apps separados no seu notebook conversando via `localhost`:
 ┌───────────────────────────── sua máquina ───────────────────────────────┐
 │                                                                          │
 │   ┌─────────────────────┐                    ┌─────────────────────┐   │
-│   │   px-torre-core      │                    │   autentique-mock    │   │
+│   │   sua aplicação      │                    │   autentique-mock    │   │
 │   │   (Docker próprio)   │                    │   (este repo)        │   │
 │   │                       │  ── webhook ──►    │                       │   │
 │   │   app :80 → :8080     │  ◄── chamadas ──   │   server :4000 → :4100│   │
 │   └─────────────────────┘                    └─────────────────────┘   │
 │                                                                          │
-│   Nenhum dos dois projetos precisa saber como o outro está montado.     │
+│   Nenhum dos dois lados precisa saber como o outro está montado.       │
 │   Eles só precisam da porta do host um do outro.                       │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Configuração (uma vez só)
 
-1. **Aponte o px-torre-core pra este mock.** Adicione estas três linhas no `.env` local do
-   px-torre-core (esse arquivo também é ignorado pelo git lá, então isso é só pra sua máquina):
+1. **Aponte sua aplicação pra este mock.** Configure as variáveis de ambiente que ela usa pra
+   falar com a Autentique (os nomes variam por projeto, mas a ideia é a mesma):
 
    ```bash
    AUTENTIQUE_API_URL=http://host.docker.internal:4100/graphql
@@ -182,19 +178,18 @@ como dois apps separados no seu notebook conversando via `localhost`:
    AUTENTIQUE_WEBHOOK_SECRET=local-mock-secret
    ```
 
-   > `host.docker.internal` é como um container alcança uma porta publicada na sua máquina. Pros
-   > containers Sail do px-torre-core resolverem esse nome no Linux, eles precisam de uma entrada
-   > `extra_hosts: host.docker.internal:host-gateway` no `docker-compose.yml` do px-torre-core —
-   > confira se ela já existe antes de adicionar.
+   > `host.docker.internal` é como um container alcança uma porta publicada na sua máquina. Se sua
+   > aplicação também roda em containers Docker no Linux, eles precisam de uma entrada
+   > `extra_hosts: host.docker.internal:host-gateway` no `docker-compose.yml` dela pra resolver esse
+   > nome — confira se já existe antes de adicionar.
 
-2. **Limpe o cache de config do px-torre-core**, se ele tiver algum (`php artisan config:cache` já
-   rodou em algum momento): `sail artisan config:clear`. Sem isso, os novos valores do `.env` não
-   são lidos.
+2. **Limpe qualquer cache de configuração da sua aplicação**, se ela tiver algum (ex.: em apps
+   Laravel, `php artisan config:cache` já rodou em algum momento — nesse caso, `config:clear`).
+   Sem isso, os novos valores de ambiente não são lidos.
 
-3. **Aponte este mock de volta pro px-torre-core.** No `.env` deste repositório, ajuste
-   `PX_TORRE_CORE_WEBHOOK_URL` pra onde o app do px-torre-core está acessível pela sua máquina. O
-   padrão já assume o mapeamento usual do Sail (`8080:80`) — só mude se o seu px-torre-core usar
-   outra porta.
+3. **Aponte este mock de volta pra sua aplicação.** No `.env` deste repositório, ajuste
+   `WEBHOOK_TARGET_URL` pra onde o endpoint de webhook da sua aplicação está acessível pela sua
+   máquina. O padrão assume a porta `8080`; ajuste pra porta e caminho reais do seu setup.
 
 ### Confirmando que funciona
 
@@ -205,30 +200,31 @@ de status, provando que os dois lados se alcançam:
 # o mock está no ar
 curl http://localhost:4100/health
 
-# a rota de webhook do px-torre-core está alcançável (405 é o esperado: é um
-# GET numa rota que só aceita POST — isso só prova que a rota existe)
-curl -o /dev/null -w '%{http_code}\n' http://localhost:8080/api/webhooks/documents/signature
+# a rota de webhook da sua aplicação está alcançável (um 404/405 pode ser o
+# esperado aqui, dependendo do método/caminho exatos — o que importa é não
+# dar erro de conexão)
+curl -o /dev/null -w '%{http_code}\n' http://localhost:8080/api/webhooks/autentique
 ```
 
 Depois faça um teste completo de ponta a ponta: crie um documento contra o mock, dê `POST` em
 `/simulate/:documentId/sign`, e olhe o campo `webhook` na resposta:
 
-- `"status":401` significa que o webhook *chegou* no px-torre-core, mas a assinatura não bateu —
-  confira se `WEBHOOK_SECRET` (aqui) e `AUTENTIQUE_WEBHOOK_SECRET` (lá) são idênticos.
-- `"status":200` significa que funcionou: o px-torre-core aceitou o webhook.
+- `"status":401` (ou equivalente) significa que o webhook *chegou* na sua aplicação, mas a
+  assinatura não bateu — confira se `WEBHOOK_SECRET` (aqui) e o segredo configurado lá são
+  idênticos.
+- `"status":200` significa que funcionou: sua aplicação aceitou o webhook.
 
-Se um motorista/documento específico é realmente atualizado depois disso depende dos dados locais
-do próprio px-torre-core (um motorista de teste com o `cpf` que você mandou, a feature flag da
-Autentique ligada pra empresa dele, etc) — essa parte é inteiramente do px-torre-core e não tem
-nada a ver com este mock.
+Se um registro específico é realmente atualizado depois disso depende dos dados locais da própria
+aplicação (um usuário de teste com o `cpf` que você mandou, alguma feature flag ligada, etc) — essa
+parte é inteiramente da aplicação que você está testando e não tem nada a ver com este mock.
 
 ### Resolvendo problemas comuns
 
 | Sintoma                                                     | Causa provável                                                              |
 |---------------------------------------------------------------|--------------------------------------------------------------------------------|
 | `curl: (7) Failed to connect` em `localhost:4100`             | O mock não está rodando — `docker compose up -d`.                              |
-| Webhook `"delivered": false, "error": "fetch failed"`        | `PX_TORRE_CORE_WEBHOOK_URL` está errado, ou o px-torre-core não está rodando.  |
-| Webhook `"status": 401`                                       | `WEBHOOK_SECRET` aqui não bate com `AUTENTIQUE_WEBHOOK_SECRET` lá.             |
+| Webhook `"delivered": false, "error": "fetch failed"`        | `WEBHOOK_TARGET_URL` está errado, ou sua aplicação não está rodando.           |
+| Webhook `"status": 401`                                       | `WEBHOOK_SECRET` aqui não bate com o segredo configurado na sua aplicação.     |
 | Arquivos em `~/Downloads/autentique-mock/` pertencendo a `root` | `HOST_UID` / `HOST_GID` no `.env` não batem com seu `id -u` / `id -g` real.  |
 
 ## Estrutura do projeto

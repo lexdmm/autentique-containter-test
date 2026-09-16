@@ -47,8 +47,8 @@ test('sendSignatureWebhook signs the exact raw body it sends (HMAC-SHA256 hex)',
             .digest('hex');
 
         assert.equal(capturedOptions.headers['x-autentique-signature'], expectedSignature);
-        assert.equal(capturedUrl, process.env.PX_TORRE_CORE_WEBHOOK_URL
-            || 'http://host.docker.internal:8080/api/webhooks/documents/signature');
+        assert.equal(capturedUrl, process.env.WEBHOOK_TARGET_URL
+            || 'http://host.docker.internal:8080/api/webhooks/autentique');
     } finally {
         global.fetch = originalFetch;
     }

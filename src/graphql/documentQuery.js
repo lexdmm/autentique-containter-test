@@ -3,11 +3,11 @@ const { documentNotFoundError } = require('../lib/errors');
 const { PUBLIC_BASE_URL } = require('../lib/config');
 
 /**
- * px-torre-core sends two distinct literal queries against `document(id)`
- * (GetDocumentFiles and GetDocumentSignatureInfo), each selecting a different
- * subset of fields. A real GraphQL server would return only what was asked;
- * this always returns the combined shape instead, since both callers just
- * read the one sub-object they care about and ignore the rest.
+ * A real GraphQL server only returns the fields a query actually selects.
+ * This always returns the combined `files` + `signatures` shape instead,
+ * regardless of which subset was asked for - simpler to implement, and
+ * harmless for any client, since it just reads the sub-object it cares about
+ * and ignores the rest.
  */
 function handleDocumentQuery(variables) {
     const document = getDocument(variables.documentId);

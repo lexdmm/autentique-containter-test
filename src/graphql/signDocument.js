@@ -3,12 +3,10 @@ const { signatureNotFoundError } = require('../lib/errors');
 const { markDocumentSigned } = require('../lib/signing');
 
 /**
- * Real Autentique semantics: the API-key's own account co-signs. Note this
- * mutation isn't actually exercised by px-torre-core's driver-signing flow -
- * AutentiqueDocumentService::signDocument only updates its own DB row, no
- * external call. It IS used by the company co-sign flow
- * (AutentiquePxSignatureService), which is out of scope for this mock so far.
- * Implemented here for contract completeness.
+ * Real Autentique semantics: makes the API-key's own account co-sign the
+ * document. Whether your integration actually calls this mutation depends
+ * on your own sign flow - some apps only rely on the signature.accepted
+ * webhook and never call it directly. Implemented here for completeness.
  */
 async function handleSignDocument(variables) {
     const document = getDocument(variables.documentId);
