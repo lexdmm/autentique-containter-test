@@ -1,6 +1,7 @@
 const { getDocument } = require('../store');
-const { signatureNotFoundError } = require('../lib/errors');
-const { markDocumentSigned } = require('../lib/signing');
+const { signatureNotFoundError, documentAlreadySignedError } = require('../lib/errors');
+const { markSignerSigned } = require('../lib/signing');
+const { API_USER_EMAIL } = require('../lib/config');
 
 /**
  * Real Autentique semantics: makes the API-key's own account co-sign the
@@ -15,7 +16,19 @@ async function handleSignDocument(variables) {
         return signatureNotFoundError();
     }
 
-    await markDocumentSigned(document);
+    const signer = document.signatures.find((candidate) => (
+        candidate.email?.toLowerCase() === API_USER_EMAIL
+    ));
+
+    if (!signer) {
+        return signatureNotFoundError();
+    }
+
+    if (signer.signed_at) {
+        return documentAlreadySignedError();
+    }
+
+    await markSignerSigned(document, signer);
 
     return { status: 200, body: { data: { signDocument: true } } };
 }

@@ -45,22 +45,19 @@ Só isso — o mock já está escutando em `http://localhost:4100`.
       cada signatário, e salva uma cópia do PDF original em `~/Downloads/autentique-mock/`.
 - [x] Query `document` — cobre tanto pedir só os arquivos (`files`) quanto só o status de
       assinatura (`signatures`), na mesma resposta combinada.
-- [x] Mutation `signDocument` — implementada por completude do contrato: a API real usa essa
-      mutation pra registrar quando a conta da própria chave de API co-assina um documento.
-- [x] Simulação de assinatura (`POST /simulate/:documentId/sign`) — substitui um signatário abrindo
-      o link e assinando de verdade: marca o documento como assinado, carimba uma página de
-      auditoria falsa "SIMULATED" no PDF, salva em `~/Downloads/autentique-mock/`, e dispara o
-      mesmo webhook `signature.accepted` que a Autentique enviaria, assinado do mesmo jeito que a
-      documentação descreve.
+- [x] Mutation `signDocument` — assina somente o signatário cujo e-mail corresponde à conta da
+      chave de API, configurada por `AUTENTIQUE_API_USER_EMAIL`.
+- [x] Simulação de assinatura (`POST /simulate/:publicId/sign`) — substitui um signatário abrindo
+      o link e assinando de verdade: marca somente aquele signatário, dispara seu webhook
+      `signature.accepted` e finaliza/carimba o PDF quando todos tiverem assinado.
 - [x] `SIMULATE_TIMEOUT` — faz toda requisição ficar pendurada sem resposta, pra testar como sua
       aplicação se comporta durante uma queda real da Autentique.
 - [x] Header `X-Simulate-Error` — força qualquer uma das respostas de erro listadas abaixo, sob
       demanda.
 - [x] `GET /sign/:publicId` — a página que o `link.short_link` de um signatário de fato abre: mostra
-      o documento e o signatário, e tem um botão que chama `/simulate/:documentId/sign` por você, em
+      o documento e o signatário, e tem um botão que chama `/simulate/:publicId/sign` por você, em
       vez de precisar montar a requisição HTTP na mão.
 - [ ] Variações de webhook `signature.viewed` / `document.finished`.
-- [ ] O fluxo de co-assinatura da empresa (a conta da própria chave de API assinando).
 
 ## Fidelidade à documentação real
 
@@ -94,7 +91,7 @@ As limitações e os desvios conhecidos estão descritos abaixo:
 | POST   | `/graphql`                    | Endpoint GraphQL do mock (`createDocument`, `signDocument`, query `document`). |
 | GET    | `/files/:documentId/original.pdf` | O PDF original, exatamente como foi enviado.           |
 | GET    | `/files/:documentId/signed.pdf`   | O PDF assinado (404 até o documento ser assinado).     |
-| POST   | `/simulate/:documentId/sign`  | Simula a assinatura de um signatário. Corpo: `{"cpf": "12345678901"}`. |
+| POST   | `/simulate/:publicId/sign`    | Simula a assinatura daquele signatário. Corpo: `{"cpf": "12345678901"}`. |
 | GET    | `/sign/:publicId`             | A página que o `link.short_link` do signatário abre — tem um botão que chama o endpoint acima. |
 
 ## Simulando erros
@@ -109,6 +106,7 @@ fluxo normal — útil pra testar como sua aplicação reage a uma falha real da
 | `must_be_a_file`        | Erro de validação, arquivo ausente/inválido.                   |
 | `document_not_found`    | Erro GraphQL, id de documento desconhecido.                    |
 | `signature_not_found`   | Erro GraphQL, `signDocument` num documento desconhecido.       |
+| `document_signed`       | Erro GraphQL, signatário da conta da API já assinou.            |
 | `rate_limit`            | HTTP 429, "Too Many Attempts".                                  |
 
 ```bash
@@ -124,6 +122,7 @@ container: `docker compose up -d`.
 |--------------------------|---------------------------------------------------|--------------------------------------------------------------------------|
 | `SIMULATE_TIMEOUT`       | `false`                                            | `true` faz toda requisição ficar pendurada pra sempre — simula uma queda. |
 | `AUTENTIQUE_API_TOKEN`   | `fake-local-token`                                 | Token Bearer aceito pelo endpoint GraphQL local.                          |
+| `AUTENTIQUE_API_USER_EMAIL` | `api-owner@example.test`                       | E-mail da conta dona da chave; `signDocument` assina esse signatário.     |
 | `MAX_UPLOAD_BYTES`       | `10485760`                                         | Tamanho máximo do PDF enviado, em bytes (10 MiB por padrão).              |
 | `PUBLIC_BASE_URL`        | `http://localhost:4100`                            | Usado pra montar o `link.short_link` de cada signatário e as URLs de `files.*`. |
 | `HOST_UID` / `HOST_GID`  | `1000` / `1000`                                    | O seu próprio `id -u` / `id -g` — mantém os arquivos salvos em Downloads como seus, não de `root`. |
@@ -210,8 +209,9 @@ curl http://localhost:4100/health
 curl -o /dev/null -w '%{http_code}\n' http://localhost:8080/api/webhooks/autentique
 ```
 
-Depois faça um teste completo de ponta a ponta: crie um documento contra o mock, dê `POST` em
-`/simulate/:documentId/sign`, e olhe o campo `webhook` na resposta:
+Depois faça um teste completo de ponta a ponta: crie um documento contra o mock, copie o
+`signatures[].public_id` retornado, dê `POST` em `/simulate/:publicId/sign`, e olhe o campo
+`webhook` na resposta:
 
 - `"status":401` (ou equivalente) significa que o webhook *chegou* na sua aplicação, mas a
   assinatura não bateu — confira se `WEBHOOK_SECRET` (aqui) e o segredo configurado lá são
@@ -247,7 +247,7 @@ src/
     config.js                lê e centraliza todas as variáveis de ambiente
     errors.js                todos os formatos de erro, incl. X-Simulate-Error
     pdfStamp.js               monta a página falsa de auditoria "SIMULATED"
-    signing.js                marca um documento como assinado (carimba + salva)
+    signing.js                assina um signatário e finaliza o documento quando todos assinarem
     webhook.js                monta e assina o webhook signature.accepted
     downloads.js              salva os PDFs em ~/Downloads/autentique-mock/
     signPage.js               renderiza a página HTML de /sign/:publicId

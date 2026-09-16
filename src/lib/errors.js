@@ -41,6 +41,13 @@ function signatureNotFoundError() {
     };
 }
 
+function documentAlreadySignedError() {
+    return {
+        status: 200,
+        body: { errors: [{ message: 'Document was already signed', extensions: { code: 'document_signed' } }] },
+    };
+}
+
 const SIMULATABLE_ERRORS = {
     unauthorized: () => unauthorizedError(),
     invalid_phone: () => validationError({
@@ -50,6 +57,7 @@ const SIMULATABLE_ERRORS = {
     rate_limit: () => rateLimitError(),
     document_not_found: () => documentNotFoundError(),
     signature_not_found: () => signatureNotFoundError(),
+    document_signed: () => documentAlreadySignedError(),
 };
 
 function simulatedError(req) {
@@ -64,5 +72,6 @@ module.exports = {
     rateLimitError,
     documentNotFoundError,
     signatureNotFoundError,
+    documentAlreadySignedError,
     simulatedError,
 };

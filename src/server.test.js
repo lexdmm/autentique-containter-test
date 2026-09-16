@@ -7,10 +7,18 @@ const { getDocument, saveDocument } = require('./store');
 const AUTHORIZATION = { Authorization: 'Bearer fake-local-token' };
 let server;
 let baseUrl;
+let deliveredWebhooks;
 
 before(async () => {
+    deliveredWebhooks = [];
     await new Promise((resolve) => {
-        server = createApp().listen(0, '127.0.0.1', () => {
+        server = createApp({
+            sendWebhook: async (webhook) => {
+                deliveredWebhooks.push(webhook);
+
+                return { delivered: true, status: 200 };
+            },
+        }).listen(0, '127.0.0.1', () => {
             baseUrl = `http://127.0.0.1:${server.address().port}`;
             resolve();
         });
@@ -56,6 +64,13 @@ async function validPdfBlob() {
     pdf.addPage();
 
     return new Blob([await pdf.save()], { type: 'application/pdf' });
+}
+
+async function validPdfBuffer() {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+
+    return Buffer.from(await pdf.save());
 }
 
 test('requires the configured bearer token', async () => {
@@ -189,4 +204,44 @@ test('rejects a PDF larger than the configured upload limit', async () => {
     assert.deepEqual(body.errors[0].extensions.validation, {
         file: ['may_not_be_greater_than:1024'],
     });
+});
+
+test('signs only the public-id signer and emits its webhook once', async () => {
+    const document = saveDocument({
+        id: 'simulate-multiple',
+        name: 'Multiple signers',
+        originalFile: await validPdfBuffer(),
+        signed: false,
+        signatures: [
+            { public_id: 'simulate-first', email: 'first@example.test', action: 'SIGN', signed_at: null },
+            { public_id: 'simulate-second', email: 'second@example.test', action: 'SIGN', signed_at: null },
+        ],
+    });
+
+    const signPage = await fetch(`${baseUrl}/sign/simulate-second`);
+    assert.match(await signPage.text(), /\/simulate\/simulate-second\/sign/);
+
+    const firstAttempt = await fetch(`${baseUrl}/simulate/simulate-second/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: '12345678901' }),
+    });
+    const firstBody = await firstAttempt.json();
+
+    assert.equal(firstBody.signer_public_id, 'simulate-second');
+    assert.equal(firstBody.document_finished, false);
+    assert.equal(document.signatures[0].signed_at, null);
+    assert.ok(document.signatures[1].signed_at);
+    assert.equal(deliveredWebhooks.at(-1).data.public_id, 'simulate-second');
+
+    const webhookCount = deliveredWebhooks.length;
+    const secondAttempt = await fetch(`${baseUrl}/simulate/simulate-second/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: '12345678901' }),
+    });
+    const secondBody = await secondAttempt.json();
+
+    assert.deepEqual(secondBody.webhook, { skipped: true, reason: 'already_signed' });
+    assert.equal(deliveredWebhooks.length, webhookCount);
 });

@@ -6,7 +6,7 @@ function escapeHtml(value) {
 
 function renderSignPage(document, signer) {
     const label = escapeHtml(signer.name || signer.email || signer.phone);
-    const alreadySigned = Boolean(document.signed);
+    const alreadySigned = Boolean(signer.signed_at);
 
     return `<!doctype html>
 <html>
@@ -46,7 +46,7 @@ function renderSignPage(document, signer) {
       result.hidden = false;
       result.textContent = 'Signing...';
       try {
-        const response = await fetch('/simulate/${escapeHtml(document.id)}/sign', {
+        const response = await fetch('/simulate/${escapeHtml(signer.public_id)}/sign', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cpf }),

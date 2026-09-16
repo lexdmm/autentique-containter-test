@@ -14,18 +14,39 @@ test('files.signed is null before signing, populated after', () => {
         id: 'doc-query-1',
         name: 'X',
         signed: false,
-        signatures: [{ signed_at: null }],
+        signatures: [{
+            public_id: 'signature-query-1',
+            name: 'Signer',
+            email: 'signer@example.test',
+            action: 'SIGN',
+            viewed_at: null,
+            signed_at: null,
+        }],
     });
 
     const beforeSigning = handleDocumentQuery({ documentId: 'doc-query-1' });
     assert.equal(beforeSigning.body.data.document.files.signed, null);
     assert.equal(beforeSigning.body.data.document.signatures[0].signed, null);
+    assert.equal(beforeSigning.body.data.document.signatures[0].public_id, 'signature-query-1');
+    assert.equal(beforeSigning.body.data.document.signatures[0].email, 'signer@example.test');
+    assert.deepEqual(beforeSigning.body.data.document.signatures[0].action, { name: 'SIGN' });
+    assert.match(
+        beforeSigning.body.data.document.signatures[0].link.short_link,
+        /\/sign\/signature-query-1$/,
+    );
 
     saveDocument({
         id: 'doc-query-1',
         name: 'X',
         signed: true,
-        signatures: [{ signed_at: '2026-01-01T00:00:00.000Z' }],
+        signatures: [{
+            public_id: 'signature-query-1',
+            name: 'Signer',
+            email: 'signer@example.test',
+            action: 'SIGN',
+            viewed_at: null,
+            signed_at: '2026-01-01T00:00:00.000Z',
+        }],
     });
 
     const afterSigning = handleDocumentQuery({ documentId: 'doc-query-1' });

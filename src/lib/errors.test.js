@@ -31,7 +31,15 @@ test('simulatedError returns HTTP 429 for rate_limit', () => {
 });
 
 test('simulatedError covers every documented key without throwing', () => {
-    for (const key of ['unauthorized', 'must_be_a_file', 'document_not_found', 'signature_not_found']) {
+    const keys = [
+        'unauthorized',
+        'must_be_a_file',
+        'document_not_found',
+        'signature_not_found',
+        'document_signed',
+    ];
+
+    for (const key of keys) {
         const result = simulatedError(fakeRequest(key));
         assert.ok(result.status);
         assert.ok(result.body.errors[0].message);

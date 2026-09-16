@@ -4,12 +4,12 @@ const { graphql } = require('graphql');
 const simulateTimeout = require('./middleware/simulateTimeout');
 const {
     simulatedError,
-    documentNotFoundError,
+    signatureNotFoundError,
     unauthorizedError,
     validationError,
 } = require('./lib/errors');
 const { getDocument, findBySignerPublicId } = require('./store');
-const { markDocumentSigned } = require('./lib/signing');
+const { markSignerSigned } = require('./lib/signing');
 const { sendSignatureWebhook, buildSignatureData } = require('./lib/webhook');
 const { renderSignPage } = require('./lib/signPage');
 const { API_TOKEN, MAX_UPLOAD_BYTES, PORT } = require('./lib/config');
@@ -141,7 +141,7 @@ function formatExecutionResult(result) {
     };
 }
 
-function createApp() {
+function createApp({ sendWebhook = sendSignatureWebhook } = {}) {
     const app = express();
 
     app.use(simulateTimeout);
@@ -211,7 +211,7 @@ function createApp() {
         res.type('application/pdf').send(document.signedFile);
     });
 
-    app.post('/simulate/:documentId/sign', async (req, res) => {
+    app.post('/simulate/:publicId/sign', async (req, res) => {
         const simulated = simulatedError(req);
 
         if (simulated) {
@@ -220,10 +220,10 @@ function createApp() {
             return;
         }
 
-        const document = getDocument(req.params.documentId);
+        const document = findBySignerPublicId(req.params.publicId);
 
         if (!document) {
-            res.status(404).json(documentNotFoundError().body);
+            res.status(404).json(signatureNotFoundError().body);
 
             return;
         }
@@ -236,16 +236,25 @@ function createApp() {
             return;
         }
 
+        const signer = document.signatures.find((candidate) => (
+            candidate.public_id === req.params.publicId
+        ));
+
         try {
-            await markDocumentSigned(document);
+            const signing = await markSignerSigned(document, signer);
+            const webhookResult = signing.changed
+                ? await sendWebhook({
+                    type: 'signature.accepted',
+                    data: buildSignatureData({ documentId: document.id, signer, cpf, email }),
+                })
+                : { skipped: true, reason: 'already_signed' };
 
-            const signer = document.signatures[0];
-            const webhookResult = await sendSignatureWebhook({
-                type: 'signature.accepted',
-                data: buildSignatureData({ documentId: document.id, signer, cpf, email }),
+            res.json({
+                signed: true,
+                document_finished: signing.completed,
+                signer_public_id: signer.public_id,
+                webhook: webhookResult,
             });
-
-            res.json({ signed: true, webhook: webhookResult });
         } catch (error) {
             logError(error, 'simulate-signature');
             res.status(500).json({ errors: [{ message: 'Failed to simulate signature' }] });

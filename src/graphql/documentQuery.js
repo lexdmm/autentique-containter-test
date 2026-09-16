@@ -28,7 +28,18 @@ function handleDocumentQuery(variables) {
                         signed: document.signed ? `${PUBLIC_BASE_URL}/files/${document.id}/signed.pdf` : null,
                     },
                     signatures: document.signatures.map((signature) => ({
+                        public_id: signature.public_id,
+                        name: signature.name,
+                        email: signature.email,
+                        created_at: signature.created_at ?? null,
+                        action: { name: signature.action },
+                        link: signature.email || signature.name
+                            ? { short_link: `${PUBLIC_BASE_URL}/sign/${signature.public_id}` }
+                            : null,
+                        user: null,
+                        viewed: signature.viewed_at ? { created_at: signature.viewed_at } : null,
                         signed: signature.signed_at ? { created_at: signature.signed_at } : null,
+                        rejected: null,
                     })),
                 },
             },
