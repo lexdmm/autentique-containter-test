@@ -30,6 +30,7 @@ function buildSignature(input) {
         email: input.email ?? null,
         phone: input.phone ?? null,
         action: input.action ?? 'SIGN',
+        created_at: new Date().toISOString(),
         signed_at: null,
         viewed_at: null,
     };
@@ -40,7 +41,7 @@ function toResponseSignature(signature) {
         public_id: signature.public_id,
         name: signature.name,
         email: signature.email,
-        created_at: null,
+        created_at: signature.created_at,
         action: { name: signature.action },
         link: signature.email || signature.name
             ? { short_link: `${PUBLIC_BASE_URL}/sign/${signature.public_id}` }

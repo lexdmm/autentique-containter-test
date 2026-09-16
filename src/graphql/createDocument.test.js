@@ -63,6 +63,7 @@ test('an email signer gets a link.short_link pointing at the sign page', async (
     const [signature] = result.body.data.createDocument.signatures;
 
     assert.match(signature.link.short_link, /\/sign\/[0-9a-f-]{36}$/);
+    assert.match(signature.created_at, /^\d{4}-\d{2}-\d{2}T/);
 });
 
 test('response shape matches the documented Document fields', async () => {

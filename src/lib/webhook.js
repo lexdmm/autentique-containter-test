@@ -1,54 +1,59 @@
 const crypto = require('crypto');
 const { WEBHOOK_SECRET, WEBHOOK_TARGET_URL } = require('./config');
 
-/**
- * The real webhook's `data` for a signature.* event is the full Signature
- * resource (per Autentique's docs): public_id, object, user{name,email,cpf,
- * birthday}, document, action, and Event-typed viewed/signed/rejected/
- * biometric_* fields. One deliberate deviation: `signed` here is a plain ISO
- * string, not an Event object like the docs show - a lot of consuming apps
- * read this field straight into a datetime/timestamp column, and a nested
- * object would break that common pattern. See the README for the trade-off.
- */
+function formatAction(action) {
+    const normalized = String(action || 'SIGN').toLowerCase();
+
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 function buildSignatureData({ documentId, signer, cpf, email }) {
     return {
-        object: 'signature',
         public_id: signer?.public_id ?? null,
-        document: documentId,
-        action: { name: signer?.action ?? 'SIGN' },
-        signed: new Date().toISOString(),
-        viewed: null,
-        rejected: null,
-        biometric_approved: null,
-        biometric_rejected: null,
+        object: 'signature',
         user: {
-            cpf,
-            email: email ?? signer?.email ?? null,
             name: signer?.name ?? null,
+            company: null,
+            email: email ?? signer?.email ?? null,
+            phone: signer?.phone ?? null,
+            cpf,
             birthday: null,
         },
+        mail: {
+            sent: null,
+            opened: null,
+            refused: null,
+            delivered: null,
+            reason: null,
+        },
+        document: documentId,
+        action: formatAction(signer?.action),
+        viewed: signer?.viewed_at ?? null,
+        signed: signer?.signed_at ?? new Date().toISOString(),
+        rejected: null,
+        biometric_unapproved: null,
+        biometric_approved: null,
+        biometric_rejected: null,
+        events: [],
+        created_at: signer?.created_at ?? null,
     };
 }
 
-/**
- * Builds Autentique's documented webhook envelope and signs the exact bytes
- * being sent with HMAC-SHA256 (x-autentique-signature), matching how
- * Autentique's docs say a receiving app should recompute it over the raw body.
- */
 async function sendSignatureWebhook({ type, data }) {
+    const eventId = crypto.randomUUID();
     const payload = {
-        id: crypto.randomUUID(),
+        id: Buffer.from(`1|${eventId}`).toString('base64'),
         object: 'webhook',
         name: 'local-mock',
         format: 'json',
         url: WEBHOOK_TARGET_URL,
         event: {
-            id: crypto.randomUUID(),
+            id: eventId,
             object: 'event',
             organization: 1,
             type,
             data,
-            previous_attributes: {},
+            previous_attributes: [],
             created_at: new Date().toISOString(),
         },
     };
