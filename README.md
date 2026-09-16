@@ -40,7 +40,8 @@ Só isso — o mock já está escutando em `http://localhost:4100`.
 ## O que já está implementado
 
 - [x] Mutation `createDocument` — aceita o mesmo upload multipart que qualquer client GraphQL da
-      Autentique envia (padrão `operations` + `map` + `file`), valida o arquivo e o telefone de
+      Autentique envia (padrão `operations` + `map` + `file`), valida tamanho, MIME, extensão e
+      estrutura do PDF, além do telefone de
       cada signatário, e salva uma cópia do PDF original em `~/Downloads/autentique-mock/`.
 - [x] Query `document` — cobre tanto pedir só os arquivos (`files`) quanto só o status de
       assinatura (`signatures`), na mesma resposta combinada.
@@ -64,7 +65,7 @@ Só isso — o mock já está escutando em `http://localhost:4100`.
 ## Fidelidade à documentação real
 
 Reconferido campo a campo contra [docs.autentique.com.br/api](https://docs.autentique.com.br/api).
-Tudo abaixo foi confirmado batendo exatamente, com duas exceções explicadas:
+As limitações e os desvios conhecidos estão descritos abaixo:
 
 - **Confirmado batendo exatamente**: o formato de request/response das mutations `createDocument` /
   `signDocument` e da query `document`, o envelope de erro do GraphQL (`errors[].message` +
@@ -80,9 +81,10 @@ Tudo abaixo foi confirmado batendo exatamente, com duas exceções explicadas:
   `must_be_a_valid_phone_number` e o path `signers.N.phone`. Implementado exatamente como uma
   aplicação Laravel real em produção já processa esse erro — a única evidência real disponível, já
   que a documentação da Autentique nunca menciona essa validação.
-- **Lacuna conhecida e assumida**: respostas de erro reais podem carregar um campo
-  `extensions.category` junto de `extensions.validation`. A documentação menciona que ele existe
-  mas não dá nenhum exemplo de valor, então ficou de fora em vez de eu chutar um valor.
+- **Escopo de arquivos**: embora a Autentique aceite outros formatos em alguns fluxos, este mock
+  aceita somente PDFs válidos, pois a simulação de assinatura adiciona a página de auditoria
+  diretamente ao PDF. Arquivos acima de `MAX_UPLOAD_BYTES` também são rejeitados antes de serem
+  persistidos.
 
 ## Endpoints
 
@@ -122,6 +124,7 @@ container: `docker compose up -d`.
 |--------------------------|---------------------------------------------------|--------------------------------------------------------------------------|
 | `SIMULATE_TIMEOUT`       | `false`                                            | `true` faz toda requisição ficar pendurada pra sempre — simula uma queda. |
 | `AUTENTIQUE_API_TOKEN`   | `fake-local-token`                                 | Token Bearer aceito pelo endpoint GraphQL local.                          |
+| `MAX_UPLOAD_BYTES`       | `10485760`                                         | Tamanho máximo do PDF enviado, em bytes (10 MiB por padrão).              |
 | `PUBLIC_BASE_URL`        | `http://localhost:4100`                            | Usado pra montar o `link.short_link` de cada signatário e as URLs de `files.*`. |
 | `HOST_UID` / `HOST_GID`  | `1000` / `1000`                                    | O seu próprio `id -u` / `id -g` — mantém os arquivos salvos em Downloads como seus, não de `root`. |
 | `WEBHOOK_SECRET`         | `local-mock-secret`                                | Precisa ser exatamente igual ao segredo que sua aplicação usa pra validar a assinatura do webhook. |
@@ -136,7 +139,7 @@ resto do projeto:
 docker compose exec autentique-mock npm test
 ```
 
-São 27 testes (`node --test`, o runner nativo do Node) cobrindo a lógica que
+A suíte usa `node --test`, o runner nativo do Node, e cobre a lógica que
 realmente importa: validação de telefone e arquivo no `createDocument`, os dois formatos da query
 `document`, todos os erros simuláveis, a assinatura HMAC do webhook (inclusive o caso de falha de
 rede), e o carimbo de PDF — incluindo o teste que reproduz exatamente o bug de PDF inválido

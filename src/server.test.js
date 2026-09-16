@@ -1,7 +1,8 @@
 const { after, before, test } = require('node:test');
 const assert = require('node:assert/strict');
+const { PDFDocument } = require('pdf-lib');
 const { createApp } = require('./server');
-const { saveDocument } = require('./store');
+const { getDocument, saveDocument } = require('./store');
 
 const AUTHORIZATION = { Authorization: 'Bearer fake-local-token' };
 let server;
@@ -30,6 +31,31 @@ async function graphqlRequest(body, headers = AUTHORIZATION) {
     });
 
     return { status: response.status, body: await response.json() };
+}
+
+function createDocumentForm(file, signers = []) {
+    const form = new FormData();
+    form.append('operations', JSON.stringify({
+        query: `mutation Create($document: DocumentInput!, $signers: [SignerInput!]!, $file: Upload!) {
+            createDocument(document: $document, signers: $signers, file: $file) { id name }
+        }`,
+        variables: {
+            document: { name: 'HTTP contract' },
+            signers,
+            file: null,
+        },
+    }));
+    form.append('map', JSON.stringify({ upload: ['variables.file'] }));
+    form.append('upload', file, 'contract.pdf');
+
+    return form;
+}
+
+async function validPdfBlob() {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+
+    return new Blob([await pdf.save()], { type: 'application/pdf' });
 }
 
 test('requires the configured bearer token', async () => {
@@ -118,5 +144,49 @@ test('returns a JSON error for malformed JSON', async () => {
     assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), {
         errors: [{ message: 'Malformed JSON request payload' }],
+    });
+});
+
+test('accepts and persists a valid PDF through multipart GraphQL', async () => {
+    const response = await fetch(`${baseUrl}/graphql`, {
+        method: 'POST',
+        headers: AUTHORIZATION,
+        body: createDocumentForm(await validPdfBlob()),
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.errors, undefined);
+    assert.equal(body.data.createDocument.name, 'HTTP contract');
+    assert.ok(getDocument(body.data.createDocument.id));
+});
+
+test('rejects a fake PDF through multipart GraphQL', async () => {
+    const fakePdf = new Blob(['%PDF-1.4 fake'], { type: 'application/pdf' });
+    const response = await fetch(`${baseUrl}/graphql`, {
+        method: 'POST',
+        headers: AUTHORIZATION,
+        body: createDocumentForm(fakePdf),
+    });
+    const body = await response.json();
+
+    assert.deepEqual(body.data, { createDocument: null });
+    assert.deepEqual(body.errors[0].extensions.validation, {
+        file: ['must_be_a_valid_file'],
+    });
+});
+
+test('rejects a PDF larger than the configured upload limit', async () => {
+    const oversizedPdf = new Blob([Buffer.alloc(2048)], { type: 'application/pdf' });
+    const response = await fetch(`${baseUrl}/graphql`, {
+        method: 'POST',
+        headers: AUTHORIZATION,
+        body: createDocumentForm(oversizedPdf),
+    });
+    const body = await response.json();
+
+    assert.deepEqual(body.data, { createDocument: null });
+    assert.deepEqual(body.errors[0].extensions.validation, {
+        file: ['may_not_be_greater_than:1024'],
     });
 });

@@ -70,8 +70,8 @@ const rootValue = {
     document({ id }) {
         return unwrapResult(handleDocumentQuery({ documentId: id }), 'document');
     },
-    createDocument({ document, signers, file }) {
-        return unwrapResult(handleCreateDocument({ document, signers }, file), 'createDocument');
+    async createDocument({ document, signers, file }) {
+        return unwrapResult(await handleCreateDocument({ document, signers }, file), 'createDocument');
     },
     async signDocument({ id }) {
         return unwrapResult(await handleSignDocument({ documentId: id }), 'signDocument');

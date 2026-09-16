@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const path = require('path');
+const { PDFDocument } = require('pdf-lib');
 const { saveDocument } = require('../store');
 const { validationError } = require('../lib/errors');
 const { saveOriginalPdf } = require('../lib/downloads');
@@ -47,7 +49,23 @@ function toResponseSignature(signature) {
     };
 }
 
-function handleCreateDocument(variables, file) {
+async function isValidPdf(file) {
+    if (file.mimetype !== 'application/pdf'
+        || path.extname(file.originalname).toLowerCase() !== '.pdf'
+        || !file.buffer.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+        return false;
+    }
+
+    try {
+        const pdf = await PDFDocument.load(file.buffer);
+
+        return pdf.getPageCount() > 0;
+    } catch {
+        return false;
+    }
+}
+
+async function handleCreateDocument(variables, file) {
     const documentInput = variables.document || {};
     const signersInput = variables.signers || [];
 
@@ -61,6 +79,10 @@ function handleCreateDocument(variables, file) {
         return validationError({
             [`signers.${invalidPhoneIndex}.phone`]: ['must_be_a_valid_phone_number'],
         });
+    }
+
+    if (!await isValidPdf(file)) {
+        return validationError({ file: ['must_be_a_valid_file'] });
     }
 
     const documentId = crypto.randomUUID();
@@ -77,8 +99,8 @@ function handleCreateDocument(variables, file) {
         signatures,
     };
 
-    saveDocument(document);
     saveOriginalPdf(documentId, file.buffer);
+    saveDocument(document);
 
     return {
         status: 200,

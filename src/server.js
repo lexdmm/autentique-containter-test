@@ -2,15 +2,28 @@ const express = require('express');
 const multer = require('multer');
 const { graphql } = require('graphql');
 const simulateTimeout = require('./middleware/simulateTimeout');
-const { simulatedError, documentNotFoundError, unauthorizedError } = require('./lib/errors');
+const {
+    simulatedError,
+    documentNotFoundError,
+    unauthorizedError,
+    validationError,
+} = require('./lib/errors');
 const { getDocument, findBySignerPublicId } = require('./store');
 const { markDocumentSigned } = require('./lib/signing');
 const { sendSignatureWebhook, buildSignatureData } = require('./lib/webhook');
 const { renderSignPage } = require('./lib/signPage');
-const { API_TOKEN, PORT } = require('./lib/config');
+const { API_TOKEN, MAX_UPLOAD_BYTES, PORT } = require('./lib/config');
 const { schema, rootValue } = require('./graphql/schema');
 
-const upload = multer();
+const upload = multer({
+    limits: {
+        fileSize: MAX_UPLOAD_BYTES,
+        fieldSize: 1024 * 1024,
+        files: 1,
+        fields: 2,
+        parts: 3,
+    },
+});
 const FORBIDDEN_PATH_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
 
 function logError(error, context) {
@@ -31,6 +44,32 @@ function authenticateGraphql(req, res, next) {
     }
 
     next();
+}
+
+function receiveGraphqlUpload(req, res, next) {
+    upload.any()(req, res, (error) => {
+        if (!error) {
+            next();
+
+            return;
+        }
+
+        if (error instanceof multer.MulterError) {
+            const rule = error.code === 'LIMIT_FILE_SIZE'
+                ? `may_not_be_greater_than:${MAX_UPLOAD_BYTES}`
+                : 'must_be_a_file';
+            const validation = validationError({ file: [rule] });
+
+            res.status(validation.status).json({
+                ...validation.body,
+                data: { createDocument: null },
+            });
+
+            return;
+        }
+
+        next(error);
+    });
 }
 
 function assignPath(target, path, value) {
@@ -112,7 +151,7 @@ function createApp() {
         res.json({ status: 'ok' });
     });
 
-    app.post('/graphql', authenticateGraphql, upload.any(), async (req, res) => {
+    app.post('/graphql', authenticateGraphql, receiveGraphqlUpload, async (req, res) => {
         const simulated = simulatedError(req);
 
         if (simulated) {
