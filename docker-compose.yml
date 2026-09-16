@@ -9,6 +9,10 @@ services:
             - PORT=4000
             - SIMULATE_TIMEOUT=${SIMULATE_TIMEOUT:-false}
             - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:4100}
+            - WEBHOOK_SECRET=${WEBHOOK_SECRET:-local-mock-secret}
+            - PX_TORRE_CORE_WEBHOOK_URL=${PX_TORRE_CORE_WEBHOOK_URL:-http://host.docker.internal:8000/api/webhooks/documents/signature}
         volumes:
             - ./src:/app/src
             - ${HOME}/Downloads/autentique-mock:/app/downloads
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'

@@ -1,10 +1,13 @@
 const express = require('express');
 const multer = require('multer');
 const simulateTimeout = require('./middleware/simulateTimeout');
-const { simulatedError } = require('./lib/errors');
+const { simulatedError, documentNotFoundError } = require('./lib/errors');
 const { handleCreateDocument } = require('./graphql/createDocument');
 const { handleDocumentQuery } = require('./graphql/documentQuery');
+const { handleSignDocument } = require('./graphql/signDocument');
 const { getDocument } = require('./store');
+const { markDocumentSigned } = require('./lib/signing');
+const { sendSignatureWebhook } = require('./lib/webhook');
 
 const PORT = process.env.PORT || 4000;
 const upload = multer();
@@ -20,7 +23,7 @@ app.get('/health', (req, res) => {
 // createDocument arrives as multipart (operations+map+file); signDocument and
 // the document query arrive as plain JSON. Multer skips non-multipart
 // requests without consuming the body, so express.json() still sees them.
-app.post('/graphql', upload.single('file'), express.json(), (req, res) => {
+app.post('/graphql', upload.single('file'), express.json(), async (req, res) => {
     const simulated = simulatedError(req);
 
     if (simulated) {
@@ -44,21 +47,32 @@ app.post('/graphql', upload.single('file'), express.json(), (req, res) => {
         ({ query, variables } = req.body);
     }
 
-    if (/\bcreateDocument\s*\(/.test(query)) {
-        const result = handleCreateDocument(variables, req.file);
-        res.status(result.status).json(result.body);
+    try {
+        if (/\bcreateDocument\s*\(/.test(query)) {
+            const result = handleCreateDocument(variables, req.file);
+            res.status(result.status).json(result.body);
 
-        return;
+            return;
+        }
+
+        if (/\bsignDocument\s*\(/.test(query)) {
+            const result = await handleSignDocument(variables);
+            res.status(result.status).json(result.body);
+
+            return;
+        }
+
+        if (/\bdocument\s*\(/.test(query)) {
+            const result = handleDocumentQuery(variables);
+            res.status(result.status).json(result.body);
+
+            return;
+        }
+
+        res.status(400).json({ errors: [{ message: 'Unknown or not-yet-implemented operation' }] });
+    } catch (error) {
+        res.status(500).json({ errors: [{ message: `Mock crashed handling this request: ${error.message}` }] });
     }
-
-    if (/\bdocument\s*\(/.test(query)) {
-        const result = handleDocumentQuery(variables);
-        res.status(result.status).json(result.body);
-
-        return;
-    }
-
-    res.status(400).json({ errors: [{ message: 'Unknown or not-yet-implemented operation' }] });
 });
 
 app.get('/files/:documentId/original.pdf', (req, res) => {
@@ -83,6 +97,54 @@ app.get('/files/:documentId/signed.pdf', (req, res) => {
     }
 
     res.type('application/pdf').send(document.signedFile);
+});
+
+// Stands in for the driver actually opening the signature link and signing
+// for real on Autentique's side: marks the document signed, generates the
+// stamped PDF, and fires the same webhook Autentique would send afterwards.
+app.post('/simulate/:documentId/sign', express.json(), async (req, res) => {
+    const simulated = simulatedError(req);
+
+    if (simulated) {
+        res.status(simulated.status).json(simulated.body);
+
+        return;
+    }
+
+    const document = getDocument(req.params.documentId);
+
+    if (!document) {
+        res.status(404).json(documentNotFoundError().body);
+
+        return;
+    }
+
+    const { cpf, email } = req.body || {};
+
+    if (!cpf) {
+        res.status(400).json({ errors: [{ message: 'cpf is required to simulate a driver signature' }] });
+
+        return;
+    }
+
+    try {
+        await markDocumentSigned(document);
+
+        const signer = document.signatures[0];
+        const webhookResult = await sendSignatureWebhook({
+            type: 'signature.accepted',
+            data: {
+                document: document.id,
+                public_id: signer?.public_id ?? null,
+                signed: new Date().toISOString(),
+                user: { cpf, email: email ?? signer?.email ?? null },
+            },
+        });
+
+        res.json({ signed: true, webhook: webhookResult });
+    } catch (error) {
+        res.status(500).json({ errors: [{ message: `Failed to simulate signature: ${error.message}` }] });
+    }
 });
 
 app.listen(PORT, () => {

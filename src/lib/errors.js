@@ -26,6 +26,13 @@ function documentNotFoundError() {
     };
 }
 
+function signatureNotFoundError() {
+    return {
+        status: 200,
+        body: { errors: [{ message: 'Signature not found', extensions: { code: 'signature_not_found' } }] },
+    };
+}
+
 const SIMULATABLE_ERRORS = {
     unauthorized: () => unauthorizedError(),
     invalid_phone: () => validationError(
@@ -38,6 +45,7 @@ const SIMULATABLE_ERRORS = {
     ),
     rate_limit: () => rateLimitError(),
     document_not_found: () => documentNotFoundError(),
+    signature_not_found: () => signatureNotFoundError(),
 };
 
 function simulatedError(req) {
@@ -46,4 +54,11 @@ function simulatedError(req) {
     return key && SIMULATABLE_ERRORS[key] ? SIMULATABLE_ERRORS[key]() : null;
 }
 
-module.exports = { validationError, unauthorizedError, rateLimitError, documentNotFoundError, simulatedError };
+module.exports = {
+    validationError,
+    unauthorizedError,
+    rateLimitError,
+    documentNotFoundError,
+    signatureNotFoundError,
+    simulatedError,
+};
