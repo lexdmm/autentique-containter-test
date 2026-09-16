@@ -10,7 +10,11 @@ const {
 } = require('./lib/errors');
 const { getDocument, findBySignerPublicId } = require('./store');
 const { markSignerSigned } = require('./lib/signing');
-const { sendSignatureWebhook, buildSignatureData } = require('./lib/webhook');
+const {
+    buildSignatureData,
+    buildWebhookPayload,
+    sendSignatureWebhook,
+} = require('./lib/webhook');
 const { renderSignPage } = require('./lib/signPage');
 const { API_TOKEN, MAX_UPLOAD_BYTES, PORT } = require('./lib/config');
 const { schema, rootValue } = require('./graphql/schema');
@@ -143,6 +147,33 @@ function formatExecutionResult(result) {
 
 function createApp({ sendWebhook = sendSignatureWebhook } = {}) {
     const app = express();
+    const webhookDeliveries = new WeakMap();
+
+    async function deliverPendingWebhook(signer) {
+        const previous = webhookDeliveries.get(signer) || Promise.resolve();
+        const delivery = previous.catch(() => undefined).then(async () => {
+            if (!signer.pending_webhook) {
+                return { skipped: true, reason: 'already_delivered' };
+            }
+
+            const result = await sendWebhook(signer.pending_webhook);
+
+            if (result.delivered) {
+                delete signer.pending_webhook;
+            }
+
+            return result;
+        });
+        webhookDeliveries.set(signer, delivery);
+
+        try {
+            return await delivery;
+        } finally {
+            if (webhookDeliveries.get(signer) === delivery) {
+                webhookDeliveries.delete(signer);
+            }
+        }
+    }
 
     app.use(simulateTimeout);
     app.use(express.json());
@@ -242,11 +273,15 @@ function createApp({ sendWebhook = sendSignatureWebhook } = {}) {
 
         try {
             const signing = await markSignerSigned(document, signer);
-            const webhookResult = signing.changed
-                ? await sendWebhook({
+            if (signing.changed) {
+                signer.pending_webhook = buildWebhookPayload({
                     type: 'signature.accepted',
                     data: buildSignatureData({ documentId: document.id, signer, cpf, email }),
-                })
+                });
+            }
+
+            const webhookResult = signer.pending_webhook
+                ? await deliverPendingWebhook(signer)
                 : { skipped: true, reason: 'already_signed' };
 
             res.json({

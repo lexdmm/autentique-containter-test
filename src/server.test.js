@@ -8,15 +8,17 @@ const AUTHORIZATION = { Authorization: 'Bearer fake-local-token' };
 let server;
 let baseUrl;
 let deliveredWebhooks;
+let webhookResults;
 
 before(async () => {
     deliveredWebhooks = [];
+    webhookResults = [];
     await new Promise((resolve) => {
         server = createApp({
             sendWebhook: async (webhook) => {
                 deliveredWebhooks.push(webhook);
 
-                return { delivered: true, status: 200 };
+                return webhookResults.shift() || { delivered: true, status: 200 };
             },
         }).listen(0, '127.0.0.1', () => {
             baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -232,7 +234,7 @@ test('signs only the public-id signer and emits its webhook once', async () => {
     assert.equal(firstBody.document_finished, false);
     assert.equal(document.signatures[0].signed_at, null);
     assert.ok(document.signatures[1].signed_at);
-    assert.equal(deliveredWebhooks.at(-1).data.public_id, 'simulate-second');
+    assert.equal(deliveredWebhooks.at(-1).event.data.public_id, 'simulate-second');
 
     const webhookCount = deliveredWebhooks.length;
     const secondAttempt = await fetch(`${baseUrl}/simulate/simulate-second/sign`, {
@@ -244,4 +246,53 @@ test('signs only the public-id signer and emits its webhook once', async () => {
 
     assert.deepEqual(secondBody.webhook, { skipped: true, reason: 'already_signed' });
     assert.equal(deliveredWebhooks.length, webhookCount);
+});
+
+test('retries the same webhook after a receiver failure without signing again', async () => {
+    const document = saveDocument({
+        id: 'simulate-webhook-retry',
+        name: 'Webhook retry',
+        originalFile: await validPdfBuffer(),
+        signed: false,
+        signatures: [
+            { public_id: 'retry-signer', email: 'retry@example.test', action: 'SIGN', signed_at: null },
+        ],
+    });
+    webhookResults.push(
+        { delivered: false, status: 500, body: 'receiver failed' },
+        { delivered: true, status: 200, body: 'ok' },
+    );
+
+    const request = () => fetch(`${baseUrl}/simulate/retry-signer/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: '12345678901' }),
+    });
+
+    const firstResponse = await request();
+    const firstBody = await firstResponse.json();
+    const signedAt = document.signatures[0].signed_at;
+    const firstWebhook = deliveredWebhooks.at(-1);
+
+    assert.equal(firstBody.webhook.delivered, false);
+    assert.equal(firstBody.webhook.status, 500);
+    assert.ok(signedAt);
+
+    const retryResponse = await request();
+    const retryBody = await retryResponse.json();
+    const retriedWebhook = deliveredWebhooks.at(-1);
+
+    assert.equal(retryBody.webhook.delivered, true);
+    assert.equal(document.signatures[0].signed_at, signedAt);
+    assert.equal(retriedWebhook.event.id, firstWebhook.event.id);
+    assert.equal(retriedWebhook.id, firstWebhook.id);
+
+    const deliveredCount = deliveredWebhooks.length;
+    const finalResponse = await request();
+
+    assert.deepEqual((await finalResponse.json()).webhook, {
+        skipped: true,
+        reason: 'already_signed',
+    });
+    assert.equal(deliveredWebhooks.length, deliveredCount);
 });

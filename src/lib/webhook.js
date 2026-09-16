@@ -39,9 +39,10 @@ function buildSignatureData({ documentId, signer, cpf, email }) {
     };
 }
 
-async function sendSignatureWebhook({ type, data }) {
+function buildWebhookPayload({ type, data }) {
     const eventId = crypto.randomUUID();
-    const payload = {
+
+    return {
         id: Buffer.from(`1|${eventId}`).toString('base64'),
         object: 'webhook',
         name: 'local-mock',
@@ -57,7 +58,9 @@ async function sendSignatureWebhook({ type, data }) {
             created_at: new Date().toISOString(),
         },
     };
+}
 
+async function sendSignatureWebhook(payload) {
     const body = JSON.stringify(payload);
     const signature = crypto.createHmac('sha256', WEBHOOK_SECRET).update(body).digest('hex');
 
@@ -72,10 +75,19 @@ async function sendSignatureWebhook({ type, data }) {
             signal: AbortSignal.timeout(5000),
         });
 
-        return { delivered: true, status: response.status, body: await response.text() };
+        return {
+            delivered: response.ok,
+            status: response.status,
+            body: await response.text(),
+        };
     } catch (error) {
         return { delivered: false, error: error.message, target: WEBHOOK_TARGET_URL };
     }
 }
 
-module.exports = { sendSignatureWebhook, buildSignatureData, WEBHOOK_TARGET_URL };
+module.exports = {
+    buildSignatureData,
+    buildWebhookPayload,
+    sendSignatureWebhook,
+    WEBHOOK_TARGET_URL,
+};

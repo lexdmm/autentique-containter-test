@@ -1,7 +1,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { buildSignatureData, sendSignatureWebhook } = require('./webhook');
+const {
+    buildSignatureData,
+    buildWebhookPayload,
+    sendSignatureWebhook,
+} = require('./webhook');
 
 test('buildSignatureData matches the documented signature.accepted data object', () => {
     const data = buildSignatureData({
@@ -53,25 +57,26 @@ test('sendSignatureWebhook signs the exact raw body it sends (HMAC-SHA256 hex)',
         capturedUrl = url;
         capturedOptions = options;
 
-        return { status: 200, text: async () => '{"message":"ok"}' };
+        return { ok: true, status: 200, text: async () => '{"message":"ok"}' };
     };
 
     try {
-        const result = await sendSignatureWebhook({
+        const payload = buildWebhookPayload({
             type: 'signature.accepted',
             data: buildSignatureData({ documentId: 'doc-1', signer: {}, cpf: '12345678901' }),
         });
+        const result = await sendSignatureWebhook(payload);
 
         assert.equal(result.delivered, true);
         assert.equal(result.status, 200);
 
-        const payload = JSON.parse(capturedOptions.body);
-        assert.equal(payload.object, 'webhook');
-        assert.equal(payload.event.type, 'signature.accepted');
-        assert.deepEqual(payload.event.previous_attributes, []);
+        const sentPayload = JSON.parse(capturedOptions.body);
+        assert.equal(sentPayload.object, 'webhook');
+        assert.equal(sentPayload.event.type, 'signature.accepted');
+        assert.deepEqual(sentPayload.event.previous_attributes, []);
         assert.equal(
-            Buffer.from(payload.id, 'base64').toString(),
-            `1|${payload.event.id}`,
+            Buffer.from(sentPayload.id, 'base64').toString(),
+            `1|${sentPayload.event.id}`,
         );
 
         const expectedSignature = crypto
@@ -87,6 +92,28 @@ test('sendSignatureWebhook signs the exact raw body it sends (HMAC-SHA256 hex)',
     }
 });
 
+test('sendSignatureWebhook treats a non-2xx response as undelivered', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({
+        ok: false,
+        status: 500,
+        text: async () => 'receiver failed',
+    });
+
+    try {
+        const payload = buildWebhookPayload({ type: 'signature.accepted', data: {} });
+        const result = await sendSignatureWebhook(payload);
+
+        assert.deepEqual(result, {
+            delivered: false,
+            status: 500,
+            body: 'receiver failed',
+        });
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
 test('sendSignatureWebhook reports delivered:false instead of throwing when the target is unreachable', async () => {
     const originalFetch = global.fetch;
     global.fetch = async () => {
@@ -94,7 +121,8 @@ test('sendSignatureWebhook reports delivered:false instead of throwing when the 
     };
 
     try {
-        const result = await sendSignatureWebhook({ type: 'signature.accepted', data: {} });
+        const payload = buildWebhookPayload({ type: 'signature.accepted', data: {} });
+        const result = await sendSignatureWebhook(payload);
 
         assert.equal(result.delivered, false);
         assert.match(result.error, /ECONNREFUSED/);

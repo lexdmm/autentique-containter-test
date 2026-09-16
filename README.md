@@ -164,8 +164,9 @@ docker compose down
 ```
 
 Se o webhook retornar `delivered: false`, confira se a aplicação de destino está ativa e se
-`WEBHOOK_TARGET_URL` está correto. Se retornar HTTP 401, confira se os dois projetos usam o mesmo
-`WEBHOOK_SECRET`.
+`WEBHOOK_TARGET_URL` está correto. Depois de resolver a falha, repita o mesmo `POST /simulate` para
+reenviar o evento sem assinar novamente. Se retornar HTTP 401, confira se os dois projetos usam o
+mesmo `WEBHOOK_SECRET`.
 
 ## Limites conhecidos
 
