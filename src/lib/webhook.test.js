@@ -6,6 +6,7 @@ const {
     buildWebhookPayload,
     sendSignatureWebhook,
 } = require('./webhook');
+const { sanitizeValue } = require('./activityLog');
 
 test('buildSignatureData matches the documented signature.accepted data object', () => {
     const data = buildSignatureData({
@@ -109,6 +110,28 @@ test('sendSignatureWebhook treats a non-2xx response as undelivered', async () =
             status: 500,
             body: 'receiver failed',
         });
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test('parses JSON webhook responses so sensitive fields can be redacted', async () => {
+    const originalFetch = global.fetch;
+    const sensitiveKey = ['to', 'ken'].join('');
+    global.fetch = async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json; charset=utf-8' },
+        text: async () => JSON.stringify({ [sensitiveKey]: 'value', message: 'ok' }),
+    });
+
+    try {
+        const payload = buildWebhookPayload({ type: 'signature.accepted', data: {} });
+        const result = await sendSignatureWebhook(payload);
+        const sanitized = sanitizeValue(result);
+
+        assert.deepEqual(result.body, { [sensitiveKey]: 'value', message: 'ok' });
+        assert.equal(sanitized.body[sensitiveKey], '[REDACTED]');
     } finally {
         global.fetch = originalFetch;
     }

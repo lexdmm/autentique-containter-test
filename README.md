@@ -64,7 +64,7 @@ que todos assinarem e fica em `~/Downloads/autentique-mock/`.
 curl http://localhost:4100/graphql \
   -H 'Authorization: Bearer fake-local-token' \
   -H 'Content-Type: application/json' \
-  -d '{"query":"query Document($id: ID!) { document(id: $id) { id files { original signed } signatures { public_id email signed { created_at } } } }","variables":{"id":"DOCUMENT_ID"}}'
+  -d '{"query":"query Document($id: UUID!) { document(id: $id) { id refusable sortable created_at files { original signed } signatures { public_id email signed { created_at } } } }","variables":{"id":"DOCUMENT_ID"}}'
 ```
 
 Substitua `DOCUMENT_ID`. Antes da última assinatura, `files.signed` será `null`.
@@ -104,10 +104,11 @@ A mutation `signDocument` assina o signatário cujo e-mail corresponde a
 curl http://localhost:4100/graphql \
   -H 'Authorization: Bearer fake-local-token' \
   -H 'Content-Type: application/json' \
-  -d '{"query":"mutation Sign($id: ID!) { signDocument(id: $id) }","variables":{"id":"DOCUMENT_ID"}}'
+  -d '{"query":"mutation Sign($id: UUID!, $organizationId: Int) { signDocument(id: $id, organization_id: $organizationId) }","variables":{"id":"DOCUMENT_ID","organizationId":null}}'
 ```
 
-O documento precisa ter um signatário com esse e-mail.
+O documento precisa ter um signatário com esse e-mail. A assinatura também envia o webhook
+`signature.accepted`.
 
 ## Configuração
 
@@ -167,10 +168,15 @@ curl http://localhost:4100/graphql \
 ## Testes e logs
 
 ```bash
+docker compose build autentique-mock
+docker compose run --rm autentique-mock npm run typecheck
 docker compose run --rm autentique-mock npm test
 docker compose logs -f autentique-mock
 docker compose down
 ```
+
+Os contratos e as regras centrais usam TypeScript em modo estrito. A orquestração HTTP e os
+arquivos do painel permanecem em JavaScript nesta migração incremental, sem exigir um bundler.
 
 Se o webhook retornar `delivered: false`, confira se a aplicação de destino está ativa e se
 `WEBHOOK_TARGET_URL` está correto. Depois de resolver a falha, repita o mesmo `POST /simulate` para

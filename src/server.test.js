@@ -202,7 +202,7 @@ test('accepts arbitrary GraphQL variable names', async () => {
     saveDocument({ id: 'graphql-variable', name: 'Variable contract', signatures: [] });
 
     const result = await graphqlRequest({
-        query: 'query Find($customId: ID!) { document(id: $customId) { id } }',
+        query: 'query Find($customId: UUID!) { document(id: $customId) { id } }',
         variables: { customId: 'graphql-variable' },
     });
 
@@ -337,6 +337,11 @@ test('signs only the public-id signer and emits its webhook once', async () => {
     assert.ok(document.signatures[1].signed_at);
     assert.equal(deliveredWebhooks.at(-1).event.data.public_id, 'simulate-second');
 
+    const pendingPage = await fetch(`${baseUrl}/sign/simulate-second`);
+    const pendingHtml = await pendingPage.text();
+    assert.match(pendingHtml, /final PDF will be available after every signer finishes/);
+    assert.doesNotMatch(pendingHtml, /signed\.pdf/);
+
     const webhookCount = deliveredWebhooks.length;
     const secondAttempt = await fetch(`${baseUrl}/simulate/simulate-second/sign`, {
         method: 'POST',
@@ -347,6 +352,56 @@ test('signs only the public-id signer and emits its webhook once', async () => {
 
     assert.deepEqual(secondBody.webhook, { skipped: true, reason: 'already_signed' });
     assert.equal(deliveredWebhooks.length, webhookCount);
+});
+
+test('rejects a simulated signature when CPF is not exactly 11 digits', async () => {
+    saveDocument({
+        id: 'simulate-invalid-cpf',
+        name: 'Invalid CPF',
+        originalFile: await validPdfBuffer(),
+        signed: false,
+        signatures: [
+            { public_id: 'invalid-cpf-signer', email: 'signer@example.test', action: 'SIGN' },
+        ],
+    });
+
+    const response = await fetch(`${baseUrl}/simulate/invalid-cpf-signer/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: 'invalid' }),
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+        errors: [{ message: 'cpf must contain exactly 11 digits' }],
+    });
+});
+
+test('accepts the documented UUID signDocument contract and emits its webhook', async () => {
+    const documentId = '0fc9c4dc-9b47-4d43-a669-98f78490f6e4';
+    saveDocument({
+        id: documentId,
+        name: 'API owner signature',
+        originalFile: await validPdfBuffer(),
+        signed: false,
+        signatures: [{
+            public_id: 'api-owner-signature',
+            email: 'api-owner@example.test',
+            action: 'SIGN',
+            signed_at: null,
+        }],
+    });
+
+    const result = await graphqlRequest({
+        query: `mutation SignDocument($documentId: UUID!, $organizationId: Int) {
+            signDocument(id: $documentId, organization_id: $organizationId)
+        }`,
+        variables: { documentId, organizationId: 123 },
+    });
+
+    assert.deepEqual(result.body, { data: { signDocument: true } });
+    assert.equal(deliveredWebhooks.at(-1).event.type, 'signature.accepted');
+    assert.equal(deliveredWebhooks.at(-1).event.data.document, documentId);
 });
 
 test('retries the same webhook after a receiver failure without signing again', async () => {

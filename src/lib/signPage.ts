@@ -1,10 +1,14 @@
-function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+import type { Signature, StoredDocument } from '../types';
+
+function escapeHtml(value: unknown): string {
+    const entities: Record<string, string> = {
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[char]));
+    };
+
+    return String(value ?? '').replace(/[&<>"']/g, (char) => entities[char] ?? char);
 }
 
-function renderSignPage(document, signer) {
+function renderSignPage(document: StoredDocument, signer: Signature): string {
     const label = escapeHtml(signer.name || signer.email || signer.phone);
     const alreadySigned = Boolean(signer.signed_at);
 
@@ -27,12 +31,14 @@ function renderSignPage(document, signer) {
   <div class="badge">SIMULATED - not a real Autentique page</div>
   <h1>${escapeHtml(document.name)}</h1>
   <p>Signer: <strong>${label}</strong></p>
-  ${alreadySigned ? `
+  ${alreadySigned && document.signed ? `
     <p class="signed">This document is already signed.</p>
     <p><a href="/files/${escapeHtml(document.id)}/signed.pdf">Download signed PDF</a></p>
+  ` : alreadySigned ? `
+    <p class="signed">Your signature was recorded. The final PDF will be available after every signer finishes.</p>
   ` : `
     <label for="cpf">Signer's CPF (must match a real record in the app you're testing, digits only)</label>
-    <input id="cpf" placeholder="12345678901" />
+    <input id="cpf" inputmode="numeric" maxlength="11" pattern="[0-9]{11}" placeholder="12345678901" />
     <button id="submit">Simulate signature</button>
   `}
   <pre id="result" hidden></pre>
@@ -63,4 +69,4 @@ function renderSignPage(document, signer) {
 </html>`;
 }
 
-module.exports = { renderSignPage };
+export { renderSignPage };

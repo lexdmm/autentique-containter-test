@@ -13,6 +13,9 @@ test('files.signed is null before signing, populated after', () => {
     saveDocument({
         id: 'doc-query-1',
         name: 'X',
+        refusable: false,
+        sortable: true,
+        created_at: '2026-01-01T00:00:00.000Z',
         signed: false,
         signatures: [{
             public_id: 'signature-query-1',
@@ -25,6 +28,9 @@ test('files.signed is null before signing, populated after', () => {
     });
 
     const beforeSigning = handleDocumentQuery({ documentId: 'doc-query-1' });
+    assert.equal(beforeSigning.body.data.document.refusable, false);
+    assert.equal(beforeSigning.body.data.document.sortable, true);
+    assert.equal(beforeSigning.body.data.document.created_at, '2026-01-01T00:00:00.000Z');
     assert.equal(beforeSigning.body.data.document.files.signed, null);
     assert.equal(beforeSigning.body.data.document.signatures[0].signed, null);
     assert.equal(beforeSigning.body.data.document.signatures[0].public_id, 'signature-query-1');
@@ -38,6 +44,9 @@ test('files.signed is null before signing, populated after', () => {
     saveDocument({
         id: 'doc-query-1',
         name: 'X',
+        refusable: false,
+        sortable: true,
+        created_at: '2026-01-01T00:00:00.000Z',
         signed: true,
         signatures: [{
             public_id: 'signature-query-1',

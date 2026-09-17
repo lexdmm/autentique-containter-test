@@ -3,15 +3,27 @@
   "version": "1.0.0",
   "private": true,
   "description": "Mock local da API GraphQL da Autentique, para testar integracoes de geracao e assinatura de documentos sem depender da nuvem real.",
-  "main": "src/server.js",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "start": "node src/server.js",
-    "test": "DOWNLOADS_DIR=/tmp/autentique-mock-test MAX_UPLOAD_BYTES=1024 node --test src/*.test.js src/**/*.test.js"
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "DOWNLOADS_DIR=/tmp/autentique-mock-test MAX_UPLOAD_BYTES=1024 tsx --test src/*.test.js src/**/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "express": "^4.19.2",
     "graphql": "^16.14.2",
     "multer": "^2.4.0",
     "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.23",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.5.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
   }
 }

@@ -21,7 +21,7 @@ const {
 const { renderSignPage } = require('./lib/signPage');
 const { createActivityLog } = require('./lib/activityLog');
 const { API_TOKEN, MAX_UPLOAD_BYTES, PORT } = require('./lib/config');
-const { schema, rootValue } = require('./graphql/schema');
+const { createRootValue, schema } = require('./graphql/schema');
 
 const DASHBOARD_DIR = path.join(__dirname, 'dashboard');
 const DASHBOARD_ASSETS_DIR = path.join(DASHBOARD_DIR, 'assets');
@@ -313,6 +313,22 @@ function createApp({
             return;
         }
 
+        const rootValue = createRootValue({
+            onApiSignerSigned: async ({ document, signer }) => {
+                if (!signer.pending_webhook) {
+                    signer.pending_webhook = buildWebhookPayload({
+                        type: 'signature.accepted',
+                        data: buildSignatureData({
+                            documentId: document.id,
+                            signer,
+                            cpf: null,
+                        }),
+                    });
+                }
+
+                await deliverPendingWebhook(signer, req.activityRequestId);
+            },
+        });
         const result = await graphql({
             schema,
             source: operation.query,
@@ -367,8 +383,8 @@ function createApp({
 
         const { cpf, email } = req.body || {};
 
-        if (!cpf) {
-            res.status(400).json({ errors: [{ message: 'cpf is required to simulate a driver signature' }] });
+        if (typeof cpf !== 'string' || !/^\d{11}$/.test(cpf)) {
+            res.status(400).json({ errors: [{ message: 'cpf must contain exactly 11 digits' }] });
 
             return;
         }

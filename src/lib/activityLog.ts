@@ -1,4 +1,5 @@
-const crypto = require('crypto');
+import crypto from 'node:crypto';
+import type { ActivityEntry, ActivityLog } from '../types';
 
 const DEFAULT_MAX_ENTRIES = 200;
 const MAX_STRING_LENGTH = 20_000;
@@ -19,7 +20,7 @@ const SENSITIVE_KEYS = new Set([
     'xautentiquesignature',
 ]);
 
-function sanitizeString(value) {
+function sanitizeString(value: string): string {
     const sanitized = value
         .replace(/[a-z0-9._%+-]{1,64}@[a-z0-9.-]{1,253}\.[a-z]{2,63}/gi, '[REDACTED_EMAIL]')
         .replace(/\b\d{11}\b/g, '[REDACTED_CPF]');
@@ -31,7 +32,7 @@ function sanitizeString(value) {
     return `${sanitized.slice(0, MAX_STRING_LENGTH)}…[truncated]`;
 }
 
-function sanitizeTarget(value) {
+function sanitizeTarget(value: string): string {
     try {
         const target = new URL(value);
 
@@ -46,7 +47,11 @@ function sanitizeTarget(value) {
     }
 }
 
-function sanitizeValue(value, key = '') {
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function sanitizeValue(value: unknown, key = ''): unknown {
     const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
 
     if (SENSITIVE_KEYS.has(normalizedKey)
@@ -72,8 +77,8 @@ function sanitizeValue(value, key = '') {
         return value.map((item) => sanitizeValue(item));
     }
 
-    if (value && typeof value === 'object') {
-        if (value.buffer && Buffer.isBuffer(value.buffer)) {
+    if (isRecord(value)) {
+        if (Buffer.isBuffer(value.buffer)) {
             return {
                 fieldname: value.fieldname,
                 mimetype: value.mimetype,
@@ -89,21 +94,34 @@ function sanitizeValue(value, key = '') {
     return value;
 }
 
-function createActivityLog({ maxEntries = DEFAULT_MAX_ENTRIES } = {}) {
+function createActivityLog({ maxEntries = DEFAULT_MAX_ENTRIES } = {}): ActivityLog {
     if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
         throw new Error('maxEntries must be a positive integer');
     }
 
-    const entries = [];
-    const subscribers = new Set();
+    const entries: ActivityEntry[] = [];
+    const subscribers = new Set<(entry: ActivityEntry) => void>();
 
     return {
-        add(entry) {
-            const recorded = sanitizeValue({
+        add(entry: ActivityEntry) {
+            const id = crypto.randomUUID();
+            const recordedAt = new Date().toISOString();
+            const sanitized = sanitizeValue({
                 ...entry,
-                id: crypto.randomUUID(),
-                recorded_at: new Date().toISOString(),
+                id,
+                recorded_at: recordedAt,
             });
+
+            if (!isRecord(sanitized)) {
+                throw new Error('sanitized activity entry must be an object');
+            }
+
+            const recorded: ActivityEntry = {
+                ...sanitized,
+                id,
+                recorded_at: recordedAt,
+                type: entry.type,
+            };
 
             entries.push(recorded);
 
@@ -118,7 +136,7 @@ function createActivityLog({ maxEntries = DEFAULT_MAX_ENTRIES } = {}) {
                     console.error(JSON.stringify({
                         level: 'error',
                         context: 'activity-subscriber',
-                        message: error.message,
+                        message: error instanceof Error ? error.message : 'Unknown subscriber error',
                     }));
                 }
             }
@@ -128,7 +146,7 @@ function createActivityLog({ maxEntries = DEFAULT_MAX_ENTRIES } = {}) {
         list() {
             return entries.slice().reverse();
         },
-        subscribe(subscriber) {
+        subscribe(subscriber: (entry: ActivityEntry) => void) {
             if (typeof subscriber !== 'function') {
                 throw new Error('subscriber must be a function');
             }
@@ -140,7 +158,7 @@ function createActivityLog({ maxEntries = DEFAULT_MAX_ENTRIES } = {}) {
     };
 }
 
-module.exports = {
+export {
     createActivityLog,
     sanitizeValue,
 };

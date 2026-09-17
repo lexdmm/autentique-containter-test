@@ -1,13 +1,31 @@
-const crypto = require('crypto');
-const { WEBHOOK_SECRET, WEBHOOK_TARGET_URL } = require('./config');
+import crypto from 'node:crypto';
+import { WEBHOOK_SECRET, WEBHOOK_TARGET_URL } from './config';
+import type {
+    Signature,
+    SignatureWebhookData,
+    WebhookDeliveryResult,
+    WebhookPayload,
+} from '../types';
 
-function formatAction(action) {
+function formatAction(action: string | null | undefined): string {
     const normalized = String(action || 'SIGN').toLowerCase();
 
     return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
-function buildSignatureData({ documentId, signer, cpf, email }) {
+interface BuildSignatureDataInput {
+    documentId: string;
+    signer?: Signature;
+    cpf: string | null;
+    email?: string | null;
+}
+
+function buildSignatureData({
+    documentId,
+    signer,
+    cpf,
+    email,
+}: BuildSignatureDataInput): SignatureWebhookData {
     return {
         public_id: signer?.public_id ?? null,
         object: 'signature',
@@ -39,7 +57,10 @@ function buildSignatureData({ documentId, signer, cpf, email }) {
     };
 }
 
-function buildWebhookPayload({ type, data }) {
+function buildWebhookPayload({
+    type,
+    data,
+}: { type: string; data: SignatureWebhookData }): WebhookPayload {
     const eventId = crypto.randomUUID();
 
     return {
@@ -60,7 +81,22 @@ function buildWebhookPayload({ type, data }) {
     };
 }
 
-async function sendSignatureWebhook(payload) {
+async function readResponseBody(response: Response): Promise<unknown> {
+    const body = await response.text();
+    const contentType = response.headers?.get?.('content-type') || '';
+
+    if (!contentType.includes('json')) {
+        return body;
+    }
+
+    try {
+        return JSON.parse(body) as unknown;
+    } catch {
+        return body;
+    }
+}
+
+async function sendSignatureWebhook(payload: WebhookPayload): Promise<WebhookDeliveryResult> {
     const body = JSON.stringify(payload);
     const signature = crypto.createHmac('sha256', WEBHOOK_SECRET).update(body).digest('hex');
 
@@ -78,14 +114,18 @@ async function sendSignatureWebhook(payload) {
         return {
             delivered: response.ok,
             status: response.status,
-            body: await response.text(),
+            body: await readResponseBody(response),
         };
     } catch (error) {
-        return { delivered: false, error: error.message, target: WEBHOOK_TARGET_URL };
+        return {
+            delivered: false,
+            error: error instanceof Error ? error.message : 'Unknown webhook delivery error',
+            target: WEBHOOK_TARGET_URL,
+        };
     }
 }
 
-module.exports = {
+export {
     buildSignatureData,
     buildWebhookPayload,
     sendSignatureWebhook,

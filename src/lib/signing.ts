@@ -1,9 +1,10 @@
-const { buildSignedPdf } = require('./pdfStamp');
-const { saveSignedPdf } = require('./downloads');
+import { buildSignedPdf } from './pdfStamp';
+import { saveSignedPdf } from './downloads';
+import type { Signature, SigningResult, StoredDocument } from '../types';
 
-const signingOperations = new WeakMap();
+const signingOperations = new WeakMap<StoredDocument, Promise<SigningResult>>();
 
-async function signSigner(document, signer) {
+async function signSigner(document: StoredDocument, signer: Signature): Promise<SigningResult> {
     if (signer.signed_at) {
         return {
             changed: false,
@@ -18,7 +19,7 @@ async function signSigner(document, signer) {
         candidate === signer ? { ...candidate, signed_at: signedAt } : candidate
     ));
     const completed = nextSignatures.every((candidate) => Boolean(candidate.signed_at));
-    let signedFile;
+    let signedFile: Buffer | undefined;
 
     if (completed) {
         signedFile = await buildSignedPdf(document.originalFile, {
@@ -38,7 +39,7 @@ async function signSigner(document, signer) {
     return { changed: true, completed, document, signer };
 }
 
-async function markSignerSigned(document, signer) {
+async function markSignerSigned(document: StoredDocument, signer: Signature): Promise<SigningResult> {
     const previous = signingOperations.get(document) || Promise.resolve();
     const operation = previous.catch(() => undefined).then(() => signSigner(document, signer));
     signingOperations.set(document, operation);
@@ -52,4 +53,4 @@ async function markSignerSigned(document, signer) {
     }
 }
 
-module.exports = { markSignerSigned };
+export { markSignerSigned };
