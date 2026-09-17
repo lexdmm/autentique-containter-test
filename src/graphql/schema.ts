@@ -9,10 +9,30 @@ const schema = buildSchema(`
     scalar Upload
     scalar UUID
 
+    input DocumentConfigsInput {
+        signature_appearance: String
+    }
+
     input DocumentInput {
         name: String!
         refusable: Boolean
         sortable: Boolean
+        configs: DocumentConfigsInput
+    }
+
+    input PrefilledFieldsInput {
+        name: String
+        email: String
+        phone: String
+        cpf: String
+        birthdate: String
+    }
+
+    input SignerConfigsInput {
+        cpf: String
+        name: String
+        birthdate: String
+        prefilled_fields: PrefilledFieldsInput
     }
 
     input SignerInput {
@@ -20,6 +40,8 @@ const schema = buildSchema(`
         email: String
         phone: String
         action: String
+        delivery_method: String
+        configs: SignerConfigsInput
     }
 
     type Action { name: String }
@@ -60,6 +82,7 @@ const schema = buildSchema(`
             file: Upload!
             organization_id: Int
             folder_id: String
+            sandbox: Boolean
         ): Document
         signDocument(id: UUID!, organization_id: Int): Boolean
     }
@@ -93,6 +116,7 @@ function createRootValue({ onApiSignerSigned }: { onApiSignerSigned?: OnSignerSi
             file: UploadFile;
             organization_id?: number | null;
             folder_id?: string | null;
+            sandbox?: boolean | null;
         }) {
             return unwrapResult(
                 await handleCreateDocument({ document, signers }, file),

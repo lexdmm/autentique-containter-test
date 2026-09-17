@@ -1,20 +1,20 @@
 services:
-    autentique-mock:
-        build: .
-        container_name: autentique-mock
-        user: '${HOST_UID:-1000}:${HOST_GID:-1000}'
-        ports:
-            - '127.0.0.1:4100:4000'
-        environment:
-            - PORT=4000
-            - SIMULATE_TIMEOUT=${SIMULATE_TIMEOUT:-false}
-            - AUTENTIQUE_API_TOKEN=${AUTENTIQUE_API_TOKEN:-fake-local-token}
-            - AUTENTIQUE_API_USER_EMAIL=${AUTENTIQUE_API_USER_EMAIL:-api-owner@example.test}
-            - MAX_UPLOAD_BYTES=${MAX_UPLOAD_BYTES:-10485760}
-            - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:4100}
-            - WEBHOOK_SECRET=${WEBHOOK_SECRET:-local-mock-secret}
-            - WEBHOOK_TARGET_URL=${WEBHOOK_TARGET_URL:-http://host.docker.internal:8080/api/webhooks/autentique}
-        volumes:
-            - ${HOME}/Downloads/autentique-mock:/app/downloads
-        extra_hosts:
-            - 'host.docker.internal:host-gateway'
+  autentique-mock:
+    build: .
+    container_name: autentique-mock
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    ports:
+      - "4100:4000"
+    environment:
+      - PORT=4000
+      - SIMULATE_TIMEOUT=${SIMULATE_TIMEOUT:-false}
+      - AUTENTIQUE_API_TOKEN=${AUTENTIQUE_API_TOKEN:-fake-local-token}
+      - AUTENTIQUE_API_USER_EMAIL=${AUTENTIQUE_API_USER_EMAIL:-api-owner@example.test}
+      - MAX_UPLOAD_BYTES=${MAX_UPLOAD_BYTES:-10485760}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:4100}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-local-mock-secret}
+      - WEBHOOK_TARGET_URL=${WEBHOOK_TARGET_URL:-http://host.docker.internal:8080/api/webhooks/autentique}
+    volumes:
+      - ${HOME}/Downloads/autentique-mock:/app/downloads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

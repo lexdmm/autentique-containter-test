@@ -60,7 +60,12 @@ function toResponseSignature(signature: Signature) {
         link: signature.email || signature.name
             ? { short_link: `${PUBLIC_BASE_URL}/sign/${signature.public_id}` }
             : null,
-        user: null,
+        user: {
+            id: signature.public_id,
+            name: signature.name,
+            email: signature.email,
+            phone: signature.phone,
+        },
     };
 }
 

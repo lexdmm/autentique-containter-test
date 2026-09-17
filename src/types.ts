@@ -1,7 +1,27 @@
+export interface DocumentConfigsInput {
+    signature_appearance?: string | null;
+}
+
 export interface DocumentInput {
     name: string;
     refusable?: boolean | null;
     sortable?: boolean | null;
+    configs?: DocumentConfigsInput | null;
+}
+
+export interface PrefilledFieldsInput {
+    name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    cpf?: string | null;
+    birthdate?: string | null;
+}
+
+export interface SignerConfigsInput {
+    cpf?: string | null;
+    name?: string | null;
+    birthdate?: string | null;
+    prefilled_fields?: PrefilledFieldsInput | null;
 }
 
 export interface SignerInput {
@@ -9,6 +29,8 @@ export interface SignerInput {
     email?: string | null;
     phone?: string | null;
     action?: string | null;
+    delivery_method?: string | null;
+    configs?: SignerConfigsInput | null;
 }
 
 export interface Signature {
