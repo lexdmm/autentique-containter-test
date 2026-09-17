@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { graphql } = require('graphql');
 const simulateTimeout = require('./middleware/simulateTimeout');
+const { recordActivity } = require('./middleware/recordActivity');
 const {
     simulatedError,
     signatureNotFoundError,
@@ -14,8 +15,10 @@ const {
     buildSignatureData,
     buildWebhookPayload,
     sendSignatureWebhook,
+    WEBHOOK_TARGET_URL,
 } = require('./lib/webhook');
 const { renderSignPage } = require('./lib/signPage');
+const { createActivityLog } = require('./lib/activityLog');
 const { API_TOKEN, MAX_UPLOAD_BYTES, PORT } = require('./lib/config');
 const { schema, rootValue } = require('./graphql/schema');
 
@@ -37,6 +40,12 @@ function logError(error, context) {
         message: error.message,
         stack: error.stack,
     }));
+}
+
+function elapsedMilliseconds(startedAt) {
+    const duration = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+
+    return Math.round(duration * 100) / 100;
 }
 
 function authenticateGraphql(req, res, next) {
@@ -145,18 +154,50 @@ function formatExecutionResult(result) {
     };
 }
 
-function createApp({ sendWebhook = sendSignatureWebhook } = {}) {
+function createApp({
+    activityLog = createActivityLog(),
+    sendWebhook = sendSignatureWebhook,
+} = {}) {
     const app = express();
     const webhookDeliveries = new WeakMap();
 
-    async function deliverPendingWebhook(signer) {
+    async function deliverPendingWebhook(signer, requestId) {
         const previous = webhookDeliveries.get(signer) || Promise.resolve();
         const delivery = previous.catch(() => undefined).then(async () => {
             if (!signer.pending_webhook) {
                 return { skipped: true, reason: 'already_delivered' };
             }
 
-            const result = await sendWebhook(signer.pending_webhook);
+            const startedAt = process.hrtime.bigint();
+            let result;
+
+            try {
+                result = await sendWebhook(signer.pending_webhook);
+            } catch (error) {
+                activityLog.add({
+                    type: 'webhook',
+                    request_id: requestId,
+                    event_id: signer.pending_webhook.event.id,
+                    event_type: signer.pending_webhook.event.type,
+                    target: WEBHOOK_TARGET_URL,
+                    duration_ms: elapsedMilliseconds(startedAt),
+                    request: signer.pending_webhook,
+                    response: { delivered: false, error: error.message },
+                });
+
+                throw error;
+            }
+
+            activityLog.add({
+                type: 'webhook',
+                request_id: requestId,
+                event_id: signer.pending_webhook.event.id,
+                event_type: signer.pending_webhook.event.type,
+                target: WEBHOOK_TARGET_URL,
+                duration_ms: elapsedMilliseconds(startedAt),
+                request: signer.pending_webhook,
+                response: result,
+            });
 
             if (result.delivered) {
                 delete signer.pending_webhook;
@@ -175,6 +216,7 @@ function createApp({ sendWebhook = sendSignatureWebhook } = {}) {
         }
     }
 
+    app.use(recordActivity(activityLog));
     app.use(simulateTimeout);
     app.use(express.json());
 
@@ -195,6 +237,7 @@ function createApp({ sendWebhook = sendSignatureWebhook } = {}) {
 
         try {
             operation = parseGraphqlRequest(req);
+            req.activityRequestBody = operation;
         } catch {
             res.status(400).json({ errors: [{ message: 'Malformed GraphQL request payload' }] });
 
@@ -281,7 +324,7 @@ function createApp({ sendWebhook = sendSignatureWebhook } = {}) {
             }
 
             const webhookResult = signer.pending_webhook
-                ? await deliverPendingWebhook(signer)
+                ? await deliverPendingWebhook(signer, req.activityRequestId)
                 : { skipped: true, reason: 'already_signed' };
 
             res.json({

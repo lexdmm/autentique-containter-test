@@ -3,18 +3,22 @@ const assert = require('node:assert/strict');
 const { PDFDocument } = require('pdf-lib');
 const { createApp } = require('./server');
 const { getDocument, saveDocument } = require('./store');
+const { createActivityLog } = require('./lib/activityLog');
 
 const AUTHORIZATION = { Authorization: 'Bearer fake-local-token' };
 let server;
 let baseUrl;
 let deliveredWebhooks;
 let webhookResults;
+let activityLog;
 
 before(async () => {
     deliveredWebhooks = [];
     webhookResults = [];
+    activityLog = createActivityLog();
     await new Promise((resolve) => {
         server = createApp({
+            activityLog,
             sendWebhook: async (webhook) => {
                 deliveredWebhooks.push(webhook);
 
@@ -85,6 +89,11 @@ test('requires the configured bearer token', async () => {
     assert.equal(missing.status, 200);
     assert.equal(missing.body.errors[0].extensions.code, 'unauthorized');
     assert.equal(invalid.body.errors[0].extensions.code, 'unauthorized');
+
+    const unauthorizedEntry = activityLog.list().find((entry) => (
+        entry.type === 'http' && entry.path === '/graphql' && entry.request.headers.authorization
+    ));
+    assert.equal(unauthorizedEntry.request.headers.authorization, '[REDACTED]');
 });
 
 test('executes literal arguments, aliases, and only selected fields', async () => {
@@ -278,6 +287,12 @@ test('retries the same webhook after a receiver failure without signing again', 
     assert.equal(firstBody.webhook.status, 500);
     assert.ok(signedAt);
 
+    const failedDelivery = activityLog.list().find((entry) => (
+        entry.type === 'webhook' && entry.event_id === firstWebhook.event.id
+    ));
+    assert.equal(failedDelivery.response.delivered, false);
+    assert.equal(failedDelivery.response.status, 500);
+
     const retryResponse = await request();
     const retryBody = await retryResponse.json();
     const retriedWebhook = deliveredWebhooks.at(-1);
@@ -295,4 +310,40 @@ test('retries the same webhook after a receiver failure without signing again', 
         reason: 'already_signed',
     });
     assert.equal(deliveredWebhooks.length, deliveredCount);
+});
+
+test('records sanitized and correlated HTTP and webhook activity', async () => {
+    saveDocument({
+        id: 'activity-document',
+        name: 'Activity document',
+        originalFile: await validPdfBuffer(),
+        signed: false,
+        signatures: [
+            { public_id: 'activity-signer', email: 'private@example.test', action: 'SIGN' },
+        ],
+    });
+
+    const response = await fetch(`${baseUrl}/simulate/activity-signer/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpf: '12345678901', email: 'private@example.test' }),
+    });
+    await response.json();
+
+    const requestId = response.headers.get('x-request-id');
+    const entries = activityLog.list().filter((entry) => entry.request_id === requestId);
+    const httpEntry = entries.find((entry) => entry.type === 'http');
+    const webhookEntry = entries.find((entry) => entry.type === 'webhook');
+
+    assert.ok(requestId);
+    assert.equal(httpEntry.path, '/simulate/activity-signer/sign');
+    assert.equal(httpEntry.status, 200);
+    assert.equal(httpEntry.request.body.cpf, '[REDACTED]');
+    assert.equal(httpEntry.request.body.email, '[REDACTED]');
+    assert.match(httpEntry.response.headers['content-type'], /application\/json/);
+    assert.equal(httpEntry.response.body.signer_public_id, 'activity-signer');
+    assert.equal(webhookEntry.event_type, 'signature.accepted');
+    assert.equal(webhookEntry.response.delivered, true);
+    assert.equal(webhookEntry.request.event.data.user.email, '[REDACTED]');
+    assert.equal(webhookEntry.request.event.data.user.cpf, '[REDACTED]');
 });
