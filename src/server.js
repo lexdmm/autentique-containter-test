@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 const multer = require('multer');
 const { graphql } = require('graphql');
@@ -22,6 +23,9 @@ const { renderSignPage } = require('./lib/signPage');
 const { createActivityLog } = require('./lib/activityLog');
 const { API_TOKEN, MAX_UPLOAD_BYTES, PORT } = require('./lib/config');
 const { schema, rootValue } = require('./graphql/schema');
+
+const DASHBOARD_DIR = path.join(__dirname, 'dashboard');
+const DASHBOARD_ASSETS_DIR = path.join(DASHBOARD_DIR, 'assets');
 
 const upload = multer({
     limits: {
@@ -51,6 +55,16 @@ function elapsedMilliseconds(startedAt) {
 
 function sendSseEvent(res, event, data) {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+function setDashboardSecurityHeaders(req, res, next) {
+    res.set({
+        'content-security-policy': "default-src 'self'; base-uri 'none'; connect-src 'self'; frame-ancestors 'none'; form-action 'none'; img-src 'self' data:; script-src 'self'; style-src 'self'",
+        'cross-origin-opener-policy': 'same-origin',
+        'referrer-policy': 'no-referrer',
+        'x-content-type-options': 'nosniff',
+    });
+    next();
 }
 
 function authenticateGraphql(req, res, next) {
@@ -228,6 +242,17 @@ function createApp({
     app.get('/health', (req, res) => {
         res.json({ status: 'ok' });
     });
+
+    app.use('/dashboard', setDashboardSecurityHeaders);
+    app.get(['/dashboard', '/dashboard/'], (req, res) => {
+        res.sendFile(path.join(DASHBOARD_DIR, 'index.html'));
+    });
+    app.use('/dashboard/assets', express.static(DASHBOARD_ASSETS_DIR, {
+        etag: true,
+        fallthrough: true,
+        index: false,
+        maxAge: 0,
+    }));
 
     app.get('/dashboard/api/activity', authenticateDashboard, (req, res) => {
         res.set('cache-control', 'no-store').json({ data: activityLog.list() });

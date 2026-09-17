@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 
 function isMonitoredPath(path) {
-    return path !== '/health' && !path.startsWith('/dashboard');
+    return path !== '/health' && path !== '/favicon.ico' && !path.startsWith('/dashboard');
 }
 
 function recordActivity(activityLog) {

@@ -144,6 +144,28 @@ test('protects the dashboard activity API and does not record its own requests',
     assert.equal(activityLog.list().length, entriesBefore);
 });
 
+test('serves the dashboard page and its assets without exposing the configured token', async () => {
+    const page = await fetch(`${baseUrl}/dashboard`);
+    const html = await page.text();
+    const [styles, script] = await Promise.all([
+        fetch(`${baseUrl}/dashboard/assets/styles.css`),
+        fetch(`${baseUrl}/dashboard/assets/app.js`),
+    ]);
+    const scriptBody = await script.text();
+
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get('content-security-policy'), /script-src 'self'/);
+    assert.match(html, /Autentique Fake Monitor/);
+    assert.match(html, /id="activity-list"/);
+    assert.equal((await fetch(`${baseUrl}/dashboard/`)).status, 200);
+    assert.equal(styles.status, 200);
+    assert.match(styles.headers.get('content-type'), /text\/css/);
+    assert.equal(script.status, 200);
+    assert.match(script.headers.get('content-type'), /javascript/);
+    assert.doesNotMatch(html, /local-dashboard-token/);
+    assert.doesNotMatch(scriptBody, /local-dashboard-token/);
+});
+
 test('streams new sanitized activity through the protected SSE endpoint', async () => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3_000);

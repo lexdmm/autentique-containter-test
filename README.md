@@ -23,6 +23,10 @@ Resposta esperada:
 O endpoint GraphQL estará em `http://localhost:4100/graphql` e aceitará o token
 `fake-local-token`.
 
+O painel de monitoramento estará em `http://localhost:4100/dashboard`. Informe o valor de
+`DASHBOARD_TOKEN` para visualizar requests, responses e webhooks em tempo real. Os dados sensíveis
+são mascarados antes de aparecerem na tela.
+
 ## Fluxo básico de teste
 
 ### 1. Crie um documento
@@ -150,6 +154,7 @@ curl http://localhost:4100/graphql \
 | Método | Caminho | Uso |
 |---|---|---|
 | `GET` | `/health` | Verifica se o mock está ativo. |
+| `GET` | `/dashboard` | Abre o painel de monitoramento no navegador. |
 | `GET` | `/dashboard/api/activity` | Lista os eventos recentes do painel. |
 | `GET` | `/dashboard/api/stream` | Envia eventos do painel em tempo real via SSE. |
 | `POST` | `/graphql` | API GraphQL autenticada. |

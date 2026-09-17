@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Autentique Fake Monitor</title>
+    <link rel="stylesheet" href="/dashboard/assets/styles.css">
+</head>
+<body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <main class="page-shell">
+        <section class="login-card" id="login-view" aria-labelledby="login-title">
+            <div class="brand-mark" aria-hidden="true">A<span>/</span></div>
+            <p class="eyebrow">Ambiente local</p>
+            <h1 id="login-title">Autentique Fake Monitor</h1>
+            <p class="login-copy">Acompanhe requests, responses e webhooks enquanto sua integração está rodando.</p>
+
+            <form id="login-form">
+                <label for="dashboard-token">Token do painel</label>
+                <div class="token-field">
+                    <input id="dashboard-token" name="token" type="password" autocomplete="current-password" required placeholder="DASHBOARD_TOKEN">
+                    <button class="token-toggle" id="token-toggle" type="button" aria-label="Mostrar token">Mostrar</button>
+                </div>
+                <button class="primary-button" type="submit">Abrir monitor</button>
+                <p class="form-error" id="login-error" role="alert" aria-live="polite"></p>
+            </form>
+        </section>
+
+        <section class="dashboard" id="dashboard-view" hidden>
+            <header class="topbar">
+                <div class="brand-lockup">
+                    <div class="brand-mark small" aria-hidden="true">A<span>/</span></div>
+                    <div>
+                        <p class="eyebrow">Autentique fake</p>
+                        <strong>Integration monitor</strong>
+                    </div>
+                </div>
+                <div class="topbar-actions">
+                    <span class="connection-badge" id="connection-status" data-state="connecting">
+                        <span class="status-dot"></span>
+                        <span id="connection-label">Conectando</span>
+                    </span>
+                    <button class="ghost-button" id="logout-button" type="button">Sair</button>
+                </div>
+            </header>
+
+            <section class="hero">
+                <div>
+                    <p class="eyebrow">Tráfego em tempo real</p>
+                    <h1>Veja sua integração acontecer.</h1>
+                    <p>Requests recebidos e webhooks enviados, correlacionados e com dados sensíveis mascarados.</p>
+                </div>
+                <div class="live-chip"><span></span> Live</div>
+            </section>
+
+            <section class="metrics" aria-label="Resumo das atividades">
+                <article><span>Total</span><strong id="metric-total">0</strong></article>
+                <article><span>Requests HTTP</span><strong id="metric-http">0</strong></article>
+                <article><span>Webhooks</span><strong id="metric-webhooks">0</strong></article>
+                <article class="metric-errors"><span>Falhas</span><strong id="metric-errors">0</strong></article>
+            </section>
+
+            <section class="activity-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Timeline</p>
+                        <h2>Atividades recentes</h2>
+                    </div>
+                    <span class="result-count" id="result-count">0 eventos</span>
+                </div>
+
+                <div class="filters">
+                    <label class="search-field" for="activity-search">
+                        <span aria-hidden="true">⌕</span>
+                        <input id="activity-search" type="search" placeholder="Buscar rota, evento ou request ID">
+                    </label>
+                    <div class="segmented-control" role="group" aria-label="Filtrar por tipo">
+                        <button type="button" class="active" data-type="all">Todos</button>
+                        <button type="button" data-type="http">HTTP</button>
+                        <button type="button" data-type="webhook">Webhooks</button>
+                    </div>
+                    <label class="select-field">
+                        <span class="sr-only">Filtrar por resultado</span>
+                        <select id="status-filter">
+                            <option value="all">Todos os resultados</option>
+                            <option value="success">Sucesso</option>
+                            <option value="error">Falha</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="activity-list" id="activity-list"></div>
+                <div class="empty-state" id="empty-state">
+                    <div class="empty-icon" aria-hidden="true">↯</div>
+                    <h3>Aguardando atividade</h3>
+                    <p>Conecte sua aplicação ao mock. Os eventos aparecerão aqui automaticamente.</p>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/dashboard/assets/app.js" defer></script>
+</body>
+</html>
