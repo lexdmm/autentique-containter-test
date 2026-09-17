@@ -95,6 +95,7 @@ function createActivityLog({ maxEntries = DEFAULT_MAX_ENTRIES } = {}) {
     }
 
     const entries = [];
+    const subscribers = new Set();
 
     return {
         add(entry) {
@@ -110,10 +111,31 @@ function createActivityLog({ maxEntries = DEFAULT_MAX_ENTRIES } = {}) {
                 entries.splice(0, entries.length - maxEntries);
             }
 
+            for (const subscriber of subscribers) {
+                try {
+                    subscriber(recorded);
+                } catch (error) {
+                    console.error(JSON.stringify({
+                        level: 'error',
+                        context: 'activity-subscriber',
+                        message: error.message,
+                    }));
+                }
+            }
+
             return recorded;
         },
         list() {
             return entries.slice().reverse();
+        },
+        subscribe(subscriber) {
+            if (typeof subscriber !== 'function') {
+                throw new Error('subscriber must be a function');
+            }
+
+            subscribers.add(subscriber);
+
+            return () => subscribers.delete(subscriber);
         },
     };
 }

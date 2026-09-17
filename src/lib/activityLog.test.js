@@ -58,3 +58,17 @@ test('createActivityLog retains only the configured number of newest entries', (
     assert.deepEqual(activityLog.list().map((entry) => entry.sequence), [3, 2]);
     assert.ok(activityLog.list().every((entry) => entry.id && entry.recorded_at));
 });
+
+test('createActivityLog notifies active subscribers with the sanitized entry', () => {
+    const activityLog = createActivityLog();
+    const received = [];
+    const unsubscribe = activityLog.subscribe((entry) => received.push(entry));
+
+    activityLog.add({ type: 'http', token: 'secret', sequence: 1 });
+    unsubscribe();
+    activityLog.add({ type: 'http', sequence: 2 });
+
+    assert.equal(received.length, 1);
+    assert.equal(received[0].sequence, 1);
+    assert.equal(received[0].token, '[REDACTED]');
+});

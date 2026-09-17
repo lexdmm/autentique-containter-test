@@ -3,6 +3,7 @@ const multer = require('multer');
 const { graphql } = require('graphql');
 const simulateTimeout = require('./middleware/simulateTimeout');
 const { recordActivity } = require('./middleware/recordActivity');
+const { authenticateDashboard } = require('./middleware/authenticateDashboard');
 const {
     simulatedError,
     signatureNotFoundError,
@@ -46,6 +47,10 @@ function elapsedMilliseconds(startedAt) {
     const duration = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 
     return Math.round(duration * 100) / 100;
+}
+
+function sendSseEvent(res, event, data) {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
 function authenticateGraphql(req, res, next) {
@@ -222,6 +227,40 @@ function createApp({
 
     app.get('/health', (req, res) => {
         res.json({ status: 'ok' });
+    });
+
+    app.get('/dashboard/api/activity', authenticateDashboard, (req, res) => {
+        res.set('cache-control', 'no-store').json({ data: activityLog.list() });
+    });
+
+    app.get('/dashboard/api/stream', authenticateDashboard, (req, res) => {
+        res.status(200).set({
+            'cache-control': 'no-cache, no-transform',
+            connection: 'keep-alive',
+            'content-type': 'text/event-stream',
+            'x-accel-buffering': 'no',
+        });
+        res.flushHeaders();
+        res.write('retry: 3000\n\n');
+
+        const unsubscribe = activityLog.subscribe((entry) => {
+            if (!res.writableEnded) {
+                sendSseEvent(res, 'activity', entry);
+            }
+        });
+        sendSseEvent(res, 'snapshot', activityLog.list());
+
+        const heartbeat = setInterval(() => {
+            if (!res.writableEnded) {
+                res.write(': keep-alive\n\n');
+            }
+        }, 15_000);
+        heartbeat.unref();
+
+        req.once('close', () => {
+            clearInterval(heartbeat);
+            unsubscribe();
+        });
     });
 
     app.post('/graphql', authenticateGraphql, receiveGraphqlUpload, async (req, res) => {

@@ -109,6 +109,7 @@ O documento precisa ter um signatário com esse e-mail.
 |---|---|---|
 | `AUTENTIQUE_API_TOKEN` | `fake-local-token` | Token Bearer do GraphQL. |
 | `AUTENTIQUE_API_USER_EMAIL` | `api-owner@example.test` | Conta assinada por `signDocument`. |
+| `DASHBOARD_TOKEN` | `local-dashboard-token` | Token Bearer da API interna do painel. |
 | `WEBHOOK_TARGET_URL` | `http://host.docker.internal:8080/api/webhooks/autentique` | Destino dos webhooks. |
 | `WEBHOOK_SECRET` | `local-mock-secret` | Segredo da assinatura HMAC. |
 | `MAX_UPLOAD_BYTES` | `10485760` | Limite do PDF, em bytes. |
@@ -149,6 +150,8 @@ curl http://localhost:4100/graphql \
 | Método | Caminho | Uso |
 |---|---|---|
 | `GET` | `/health` | Verifica se o mock está ativo. |
+| `GET` | `/dashboard/api/activity` | Lista os eventos recentes do painel. |
+| `GET` | `/dashboard/api/stream` | Envia eventos do painel em tempo real via SSE. |
 | `POST` | `/graphql` | API GraphQL autenticada. |
 | `GET` | `/sign/:publicId` | Página local de assinatura. |
 | `POST` | `/simulate/:publicId/sign` | Simula uma assinatura. |

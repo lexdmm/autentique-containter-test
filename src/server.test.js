@@ -6,6 +6,7 @@ const { getDocument, saveDocument } = require('./store');
 const { createActivityLog } = require('./lib/activityLog');
 
 const AUTHORIZATION = { Authorization: 'Bearer fake-local-token' };
+const DASHBOARD_AUTHORIZATION = { Authorization: 'Bearer local-dashboard-token' };
 let server;
 let baseUrl;
 let deliveredWebhooks;
@@ -44,7 +45,38 @@ async function graphqlRequest(body, headers = AUTHORIZATION) {
         body: JSON.stringify(body),
     });
 
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, headers: response.headers, body: await response.json() };
+}
+
+async function waitForSseActivity(reader, predicate) {
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+            throw new Error('SSE stream ended before the expected activity');
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop();
+
+        for (const frame of frames) {
+            const lines = frame.split('\n');
+            const event = lines.find((line) => line.startsWith('event: '))?.slice(7);
+            const data = lines.find((line) => line.startsWith('data: '))?.slice(6);
+
+            if (event === 'activity' && data) {
+                const entry = JSON.parse(data);
+
+                if (predicate(entry)) {
+                    return entry;
+                }
+            }
+        }
+    }
 }
 
 function createDocumentForm(file, signers = []) {
@@ -94,6 +126,48 @@ test('requires the configured bearer token', async () => {
         entry.type === 'http' && entry.path === '/graphql' && entry.request.headers.authorization
     ));
     assert.equal(unauthorizedEntry.request.headers.authorization, '[REDACTED]');
+});
+
+test('protects the dashboard activity API and does not record its own requests', async () => {
+    const entriesBefore = activityLog.list().length;
+    const unauthorized = await fetch(`${baseUrl}/dashboard/api/activity`);
+    const authorized = await fetch(`${baseUrl}/dashboard/api/activity`, {
+        headers: DASHBOARD_AUTHORIZATION,
+    });
+    const body = await authorized.json();
+
+    assert.equal(unauthorized.status, 401);
+    assert.equal(unauthorized.headers.get('www-authenticate'), 'Bearer');
+    assert.equal(authorized.status, 200);
+    assert.equal(authorized.headers.get('cache-control'), 'no-store');
+    assert.ok(Array.isArray(body.data));
+    assert.equal(activityLog.list().length, entriesBefore);
+});
+
+test('streams new sanitized activity through the protected SSE endpoint', async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3_000);
+    const stream = await fetch(`${baseUrl}/dashboard/api/stream`, {
+        headers: DASHBOARD_AUTHORIZATION,
+        signal: controller.signal,
+    });
+    const reader = stream.body.getReader();
+
+    try {
+        assert.equal(stream.status, 200);
+        assert.match(stream.headers.get('content-type'), /text\/event-stream/);
+
+        const activityPromise = waitForSseActivity(reader, (entry) => entry.path === '/graphql');
+        const request = await graphqlRequest({ query: '{ document(id: "stream-missing") { id } }' });
+        const entry = await activityPromise;
+
+        assert.equal(entry.request_id, request.headers.get('x-request-id'));
+        assert.equal(entry.request.headers.authorization, '[REDACTED]');
+        assert.equal(entry.status, 200);
+    } finally {
+        clearTimeout(timeout);
+        await reader.cancel();
+    }
 });
 
 test('executes literal arguments, aliases, and only selected fields', async () => {
