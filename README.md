@@ -27,6 +27,8 @@ Abra `http://localhost:4100/dashboard` para visualizar requests, responses e web
 real, sem login. Por segurança, o Docker expõe esse serviço somente no computador local. Os dados
 sensíveis são mascarados antes de aparecerem na tela.
 
+<img width="1726" height="916" alt="image" src="https://github.com/user-attachments/assets/1dfe60a1-88b2-48c8-8a6f-e75ebbb85137" />
+
 ## Fluxo básico de teste
 
 ### 1. Crie um documento
