@@ -6,7 +6,6 @@ const { getDocument, saveDocument } = require('./store');
 const { createActivityLog } = require('./lib/activityLog');
 
 const AUTHORIZATION = { Authorization: 'Bearer fake-local-token' };
-const DASHBOARD_AUTHORIZATION = { Authorization: 'Bearer local-dashboard-token' };
 let server;
 let baseUrl;
 let deliveredWebhooks;
@@ -128,27 +127,23 @@ test('requires the configured bearer token', async () => {
     assert.equal(unauthorizedEntry.request.headers.authorization, '[REDACTED]');
 });
 
-test('protects the dashboard activity API and does not record its own requests', async () => {
+test('serves dashboard activity without login and does not record its own requests', async () => {
     const entriesBefore = activityLog.list().length;
-    const unauthorized = await fetch(`${baseUrl}/dashboard/api/activity`);
-    const authorized = await fetch(`${baseUrl}/dashboard/api/activity`, {
-        headers: DASHBOARD_AUTHORIZATION,
-    });
-    const body = await authorized.json();
+    const response = await fetch(`${baseUrl}/dashboard/api/activity`);
+    const body = await response.json();
 
-    assert.equal(unauthorized.status, 401);
-    assert.equal(unauthorized.headers.get('www-authenticate'), 'Bearer');
-    assert.equal(authorized.status, 200);
-    assert.equal(authorized.headers.get('cache-control'), 'no-store');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.ok(Array.isArray(body.data));
     assert.equal(activityLog.list().length, entriesBefore);
 });
 
-test('serves the dashboard page and its assets without exposing the configured token', async () => {
+test('serves the dashboard page and its assets without a login screen', async () => {
     const page = await fetch(`${baseUrl}/dashboard`);
     const html = await page.text();
-    const [styles, script] = await Promise.all([
+    const [styles, model, script] = await Promise.all([
         fetch(`${baseUrl}/dashboard/assets/styles.css`),
+        fetch(`${baseUrl}/dashboard/assets/dashboardModel.js`),
         fetch(`${baseUrl}/dashboard/assets/app.js`),
     ]);
     const scriptBody = await script.text();
@@ -157,20 +152,21 @@ test('serves the dashboard page and its assets without exposing the configured t
     assert.match(page.headers.get('content-security-policy'), /script-src 'self'/);
     assert.match(html, /Autentique Fake Monitor/);
     assert.match(html, /id="activity-list"/);
+    assert.doesNotMatch(html, /dashboard-token|login-form|logout-button/);
     assert.equal((await fetch(`${baseUrl}/dashboard/`)).status, 200);
     assert.equal(styles.status, 200);
     assert.match(styles.headers.get('content-type'), /text\/css/);
+    assert.equal(model.status, 200);
+    assert.match(model.headers.get('content-type'), /javascript/);
     assert.equal(script.status, 200);
     assert.match(script.headers.get('content-type'), /javascript/);
-    assert.doesNotMatch(html, /local-dashboard-token/);
-    assert.doesNotMatch(scriptBody, /local-dashboard-token/);
+    assert.doesNotMatch(scriptBody, /Authorization|sessionStorage|DASHBOARD_TOKEN/);
 });
 
-test('streams new sanitized activity through the protected SSE endpoint', async () => {
+test('streams new sanitized activity through the dashboard SSE endpoint without login', async () => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3_000);
     const stream = await fetch(`${baseUrl}/dashboard/api/stream`, {
-        headers: DASHBOARD_AUTHORIZATION,
         signal: controller.signal,
     });
     const reader = stream.body.getReader();

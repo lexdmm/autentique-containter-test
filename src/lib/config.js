@@ -11,7 +11,6 @@ function positiveInteger(name, fallback) {
 module.exports = {
     API_TOKEN: process.env.AUTENTIQUE_API_TOKEN || 'fake-local-token',
     API_USER_EMAIL: (process.env.AUTENTIQUE_API_USER_EMAIL || 'api-owner@example.test').toLowerCase(),
-    DASHBOARD_TOKEN: process.env.DASHBOARD_TOKEN || 'local-dashboard-token',
     MAX_UPLOAD_BYTES: positiveInteger('MAX_UPLOAD_BYTES', 10 * 1024 * 1024),
     PORT: process.env.PORT || 4000,
     PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || 'http://localhost:4100',

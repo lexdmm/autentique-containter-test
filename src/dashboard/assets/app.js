@@ -1,27 +1,22 @@
-const SESSION_KEY = 'autentique-dashboard-token';
 const MAX_VISIBLE_ENTRIES = 200;
+const dashboardModel = window.DashboardModel;
 
 const state = {
     entries: [],
-    token: null,
     typeFilter: 'all',
     statusFilter: 'all',
     search: '',
     controller: null,
     reconnectTimer: null,
     reconnectAttempts: 0,
+    closed: false,
 };
 
 const elements = {
     activityList: document.getElementById('activity-list'),
     connectionLabel: document.getElementById('connection-label'),
     connectionStatus: document.getElementById('connection-status'),
-    dashboardView: document.getElementById('dashboard-view'),
     emptyState: document.getElementById('empty-state'),
-    loginError: document.getElementById('login-error'),
-    loginForm: document.getElementById('login-form'),
-    loginView: document.getElementById('login-view'),
-    logoutButton: document.getElementById('logout-button'),
     metricErrors: document.getElementById('metric-errors'),
     metricHttp: document.getElementById('metric-http'),
     metricTotal: document.getElementById('metric-total'),
@@ -30,19 +25,8 @@ const elements = {
     search: document.getElementById('activity-search'),
     statusFilter: document.getElementById('status-filter'),
     toast: document.getElementById('toast'),
-    tokenInput: document.getElementById('dashboard-token'),
-    tokenToggle: document.getElementById('token-toggle'),
     typeButtons: [...document.querySelectorAll('[data-type]')],
 };
-
-function isFailure(entry) {
-    if (entry.type === 'webhook') {
-        return entry.response?.delivered === false
-            || (entry.response?.status && entry.response.status >= 400);
-    }
-
-    return entry.status >= 400;
-}
 
 function formatTime(value) {
     const date = new Date(value);
@@ -56,26 +40,6 @@ function formatTime(value) {
         minute: '2-digit',
         second: '2-digit',
     }).format(date);
-}
-
-function eventTitle(entry) {
-    if (entry.type === 'webhook') {
-        return entry.event_type || 'Webhook';
-    }
-
-    return `${entry.method || 'HTTP'} ${entry.path || ''}`.trim();
-}
-
-function eventStatus(entry) {
-    if (entry.type === 'webhook') {
-        if (entry.response?.status) {
-            return String(entry.response.status);
-        }
-
-        return entry.response?.delivered ? 'Entregue' : 'Falhou';
-    }
-
-    return String(entry.status || '—');
 }
 
 function setConnection(stateName, label) {
@@ -132,7 +96,7 @@ function activityCard(entry) {
     const details = document.createElement('div');
     const meta = document.createElement('div');
     const payloads = document.createElement('div');
-    const failed = isFailure(entry);
+    const failed = dashboardModel.isFailure(entry);
 
     article.className = 'activity-item';
     summary.className = 'activity-summary';
@@ -141,10 +105,10 @@ function activityCard(entry) {
     type.className = `type-badge ${entry.type === 'webhook' ? 'webhook' : ''}`;
     type.textContent = entry.type === 'webhook' ? 'Webhook' : 'HTTP';
     title.className = 'activity-title';
-    titleStrong.textContent = eventTitle(entry);
+    titleStrong.textContent = dashboardModel.eventTitle(entry);
     requestId.textContent = entry.request_id || entry.id;
     status.className = `status-badge ${failed ? 'error' : ''}`;
-    status.textContent = eventStatus(entry);
+    status.textContent = dashboardModel.eventStatus(entry);
     time.className = 'activity-time';
     time.dateTime = entry.recorded_at;
     time.textContent = formatTime(entry.recorded_at);
@@ -174,14 +138,10 @@ function activityCard(entry) {
 }
 
 function filteredEntries() {
-    return state.entries.filter((entry) => {
-        const matchesType = state.typeFilter === 'all' || entry.type === state.typeFilter;
-        const result = isFailure(entry) ? 'error' : 'success';
-        const matchesStatus = state.statusFilter === 'all' || result === state.statusFilter;
-        const matchesSearch = !state.search
-            || JSON.stringify(entry).toLowerCase().includes(state.search);
-
-        return matchesType && matchesStatus && matchesSearch;
+    return dashboardModel.filterEntries(state.entries, {
+        type: state.typeFilter,
+        status: state.statusFilter,
+        search: state.search,
     });
 }
 
@@ -189,7 +149,7 @@ function updateMetrics() {
     elements.metricTotal.textContent = state.entries.length;
     elements.metricHttp.textContent = state.entries.filter((entry) => entry.type === 'http').length;
     elements.metricWebhooks.textContent = state.entries.filter((entry) => entry.type === 'webhook').length;
-    elements.metricErrors.textContent = state.entries.filter(isFailure).length;
+    elements.metricErrors.textContent = state.entries.filter(dashboardModel.isFailure).length;
 }
 
 function render() {
@@ -231,23 +191,16 @@ function prependEntry(entry) {
 }
 
 function processFrame(frame) {
-    const lines = frame.split('\n');
-    const eventName = lines.find((line) => line.startsWith('event: '))?.slice(7);
-    const data = lines
-        .filter((line) => line.startsWith('data: '))
-        .map((line) => line.slice(6))
-        .join('\n');
+    const parsed = dashboardModel.parseSseFrame(frame);
 
-    if (!eventName || !data) {
+    if (!parsed) {
         return;
     }
 
-    const parsed = JSON.parse(data);
-
-    if (eventName === 'snapshot' && Array.isArray(parsed)) {
-        replaceEntries(parsed);
-    } else if (eventName === 'activity') {
-        prependEntry(parsed);
+    if (parsed.event === 'snapshot' && Array.isArray(parsed.data)) {
+        replaceEntries(parsed.data);
+    } else if (parsed.event === 'activity') {
+        prependEntry(parsed.data);
     }
 }
 
@@ -265,33 +218,17 @@ async function consumeStream(body, controller) {
             }
 
             buffer += decoder.decode(value, { stream: true });
-            const frames = buffer.split('\n\n');
-            buffer = frames.pop();
-
-            for (const frame of frames) {
-                processFrame(frame);
-            }
+            const extracted = dashboardModel.extractSseFrames(buffer);
+            buffer = extracted.remainder;
+            extracted.frames.forEach(processFrame);
         }
     } finally {
         reader.releaseLock();
     }
 }
 
-function enterDashboard() {
-    elements.loginView.hidden = true;
-    elements.dashboardView.hidden = false;
-    elements.loginError.textContent = '';
-}
-
-function showLogin(message = '') {
-    elements.dashboardView.hidden = true;
-    elements.loginView.hidden = false;
-    elements.loginError.textContent = message;
-    elements.tokenInput.focus();
-}
-
 function scheduleReconnect() {
-    if (!state.token || state.reconnectTimer) {
+    if (state.closed || state.reconnectTimer) {
         return;
     }
 
@@ -300,107 +237,36 @@ function scheduleReconnect() {
     setConnection('disconnected', `Reconectando em ${Math.ceil(delay / 1000)}s`);
     state.reconnectTimer = window.setTimeout(() => {
         state.reconnectTimer = null;
-        connect(state.token, true);
+        connect(true);
     }, delay);
 }
 
-async function connect(token, reconnecting = false) {
-    if (!token) {
-        showLogin('Informe o token do painel.');
-
-        return false;
-    }
-
+async function connect(reconnecting = false) {
     state.controller?.abort();
     const controller = new AbortController();
     state.controller = controller;
     setConnection('connecting', reconnecting ? 'Reconectando' : 'Conectando');
 
     try {
-        const response = await fetch('/dashboard/api/stream', {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal,
-        });
-
-        if (response.status === 401) {
-            sessionStorage.removeItem(SESSION_KEY);
-            state.token = null;
-            showLogin('Token inválido. Confira o valor de DASHBOARD_TOKEN.');
-
-            return false;
-        }
+        const response = await fetch('/dashboard/api/stream', { signal: controller.signal });
 
         if (!response.ok || !response.body) {
             throw new Error(`Stream indisponível (${response.status})`);
         }
 
-        state.token = token;
         state.reconnectAttempts = 0;
-        sessionStorage.setItem(SESSION_KEY, token);
-        enterDashboard();
         setConnection('connected', 'Conectado');
+        await consumeStream(response.body, controller);
 
-        consumeStream(response.body, controller)
-            .then(() => {
-                if (!controller.signal.aborted && state.token) {
-                    scheduleReconnect();
-                }
-            })
-            .catch((error) => {
-                if (error.name !== 'AbortError' && state.token) {
-                    scheduleReconnect();
-                }
-            });
-
-        return true;
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            return false;
-        }
-
-        if (reconnecting) {
+        if (!controller.signal.aborted) {
             scheduleReconnect();
-        } else {
-            showLogin('Não foi possível conectar ao monitor. Tente novamente.');
         }
-
-        return false;
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            scheduleReconnect();
+        }
     }
 }
-
-function logout() {
-    state.token = null;
-    state.entries = [];
-    state.controller?.abort();
-    state.controller = null;
-    window.clearTimeout(state.reconnectTimer);
-    state.reconnectTimer = null;
-    sessionStorage.removeItem(SESSION_KEY);
-    elements.tokenInput.value = '';
-    render();
-    showLogin();
-}
-
-elements.loginForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const button = elements.loginForm.querySelector('[type="submit"]');
-    const token = elements.tokenInput.value.trim();
-
-    button.disabled = true;
-    button.textContent = 'Conectando…';
-    await connect(token);
-    button.disabled = false;
-    button.textContent = 'Abrir monitor';
-});
-
-elements.tokenToggle.addEventListener('click', () => {
-    const revealing = elements.tokenInput.type === 'password';
-    elements.tokenInput.type = revealing ? 'text' : 'password';
-    elements.tokenToggle.textContent = revealing ? 'Ocultar' : 'Mostrar';
-    elements.tokenToggle.setAttribute('aria-label', revealing ? 'Ocultar token' : 'Mostrar token');
-});
-
-elements.logoutButton.addEventListener('click', logout);
 
 elements.search.addEventListener('input', (event) => {
     state.search = event.target.value.trim().toLowerCase();
@@ -420,10 +286,11 @@ for (const button of elements.typeButtons) {
     });
 }
 
-window.addEventListener('beforeunload', () => state.controller?.abort());
-render();
+window.addEventListener('beforeunload', () => {
+    state.closed = true;
+    state.controller?.abort();
+    window.clearTimeout(state.reconnectTimer);
+});
 
-const storedToken = sessionStorage.getItem(SESSION_KEY);
-if (storedToken) {
-    connect(storedToken);
-}
+render();
+connect();

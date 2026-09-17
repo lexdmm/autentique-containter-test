@@ -89,17 +89,6 @@ select:focus-visible {
     padding: 32px 0 64px;
 }
 
-.login-card {
-    width: min(460px, 100%);
-    margin: clamp(70px, 13vh, 140px) auto 0;
-    padding: 42px;
-    border: 1px solid var(--border);
-    border-radius: 26px;
-    background: rgba(18, 23, 34, 0.92);
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(18px);
-}
-
 .brand-mark {
     display: grid;
     width: 58px;
@@ -136,93 +125,15 @@ select:focus-visible {
     text-transform: uppercase;
 }
 
-.login-card h1,
 .hero h1 {
     margin: 0;
     letter-spacing: -0.045em;
 }
-
-.login-card h1 {
-    font-size: clamp(29px, 6vw, 40px);
-    line-height: 1.04;
-}
-
-.login-copy {
-    max-width: 36ch;
-    margin: 18px 0 30px;
-    color: var(--muted);
-    line-height: 1.6;
-}
-
-form > label {
-    display: block;
-    margin-bottom: 9px;
-    color: #d5d9e2;
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.token-field {
-    position: relative;
-}
-
-.token-field input,
 .search-field,
 .select-field select {
     border: 1px solid var(--border);
     color: var(--text);
     background: #0d1119;
-}
-
-.token-field input {
-    width: 100%;
-    height: 52px;
-    padding: 0 84px 0 15px;
-    border-radius: 12px;
-}
-
-.token-toggle {
-    position: absolute;
-    top: 50%;
-    right: 12px;
-    padding: 5px;
-    border: 0;
-    color: var(--muted);
-    background: transparent;
-    transform: translateY(-50%);
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.primary-button {
-    width: 100%;
-    height: 52px;
-    margin-top: 14px;
-    border: 0;
-    border-radius: 12px;
-    color: #13151b;
-    background: var(--accent);
-    cursor: pointer;
-    font-weight: 850;
-    transition: transform 160ms ease, box-shadow 160ms ease;
-}
-
-.primary-button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 10px 28px rgba(255, 107, 74, 0.22);
-}
-
-.primary-button:disabled {
-    cursor: wait;
-    opacity: 0.62;
-}
-
-.form-error {
-    min-height: 20px;
-    margin: 12px 0 -6px;
-    color: var(--danger);
-    font-size: 13px;
 }
 
 .topbar {
@@ -233,8 +144,7 @@ form > label {
     border-bottom: 1px solid var(--border);
 }
 
-.brand-lockup,
-.topbar-actions {
+.brand-lockup {
     display: flex;
     align-items: center;
 }
@@ -249,10 +159,6 @@ form > label {
 
 .brand-lockup strong {
     font-size: 14px;
-}
-
-.topbar-actions {
-    gap: 12px;
 }
 
 .connection-badge,
@@ -299,20 +205,6 @@ form > label {
 .connection-badge[data-state="disconnected"] .status-dot {
     background: var(--danger);
     box-shadow: 0 0 0 4px rgba(255, 107, 116, 0.1);
-}
-
-.ghost-button {
-    padding: 8px 12px;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    background: transparent;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 750;
-}
-
-.ghost-button:hover {
-    background: var(--surface-raised);
 }
 
 .hero {
@@ -744,18 +636,9 @@ form > label {
         padding-top: 18px;
     }
 
-    .login-card {
-        margin-top: 34px;
-        padding: 28px 22px;
-    }
-
     .brand-lockup > div:last-child,
     #connection-label {
         display: none;
-    }
-
-    .topbar-actions {
-        gap: 7px;
     }
 
     .hero {

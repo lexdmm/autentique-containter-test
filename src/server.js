@@ -4,7 +4,6 @@ const multer = require('multer');
 const { graphql } = require('graphql');
 const simulateTimeout = require('./middleware/simulateTimeout');
 const { recordActivity } = require('./middleware/recordActivity');
-const { authenticateDashboard } = require('./middleware/authenticateDashboard');
 const {
     simulatedError,
     signatureNotFoundError,
@@ -254,11 +253,11 @@ function createApp({
         maxAge: 0,
     }));
 
-    app.get('/dashboard/api/activity', authenticateDashboard, (req, res) => {
+    app.get('/dashboard/api/activity', (req, res) => {
         res.set('cache-control', 'no-store').json({ data: activityLog.list() });
     });
 
-    app.get('/dashboard/api/stream', authenticateDashboard, (req, res) => {
+    app.get('/dashboard/api/stream', (req, res) => {
         res.status(200).set({
             'cache-control': 'no-cache, no-transform',
             connection: 'keep-alive',

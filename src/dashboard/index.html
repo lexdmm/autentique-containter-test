@@ -12,24 +12,7 @@
     <div class="ambient ambient-two"></div>
 
     <main class="page-shell">
-        <section class="login-card" id="login-view" aria-labelledby="login-title">
-            <div class="brand-mark" aria-hidden="true">A<span>/</span></div>
-            <p class="eyebrow">Ambiente local</p>
-            <h1 id="login-title">Autentique Fake Monitor</h1>
-            <p class="login-copy">Acompanhe requests, responses e webhooks enquanto sua integração está rodando.</p>
-
-            <form id="login-form">
-                <label for="dashboard-token">Token do painel</label>
-                <div class="token-field">
-                    <input id="dashboard-token" name="token" type="password" autocomplete="current-password" required placeholder="DASHBOARD_TOKEN">
-                    <button class="token-toggle" id="token-toggle" type="button" aria-label="Mostrar token">Mostrar</button>
-                </div>
-                <button class="primary-button" type="submit">Abrir monitor</button>
-                <p class="form-error" id="login-error" role="alert" aria-live="polite"></p>
-            </form>
-        </section>
-
-        <section class="dashboard" id="dashboard-view" hidden>
+        <section class="dashboard" id="dashboard-view">
             <header class="topbar">
                 <div class="brand-lockup">
                     <div class="brand-mark small" aria-hidden="true">A<span>/</span></div>
@@ -38,13 +21,10 @@
                         <strong>Integration monitor</strong>
                     </div>
                 </div>
-                <div class="topbar-actions">
-                    <span class="connection-badge" id="connection-status" data-state="connecting">
-                        <span class="status-dot"></span>
-                        <span id="connection-label">Conectando</span>
-                    </span>
-                    <button class="ghost-button" id="logout-button" type="button">Sair</button>
-                </div>
+                <span class="connection-badge" id="connection-status" data-state="connecting">
+                    <span class="status-dot"></span>
+                    <span id="connection-label">Conectando</span>
+                </span>
             </header>
 
             <section class="hero">
@@ -103,6 +83,7 @@
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/dashboard/assets/dashboardModel.js" defer></script>
     <script src="/dashboard/assets/app.js" defer></script>
 </body>
 </html>

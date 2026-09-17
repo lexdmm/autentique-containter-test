@@ -23,9 +23,9 @@ Resposta esperada:
 O endpoint GraphQL estará em `http://localhost:4100/graphql` e aceitará o token
 `fake-local-token`.
 
-O painel de monitoramento estará em `http://localhost:4100/dashboard`. Informe o valor de
-`DASHBOARD_TOKEN` para visualizar requests, responses e webhooks em tempo real. Os dados sensíveis
-são mascarados antes de aparecerem na tela.
+Abra `http://localhost:4100/dashboard` para visualizar requests, responses e webhooks em tempo
+real, sem login. Por segurança, o Docker expõe esse serviço somente no computador local. Os dados
+sensíveis são mascarados antes de aparecerem na tela.
 
 ## Fluxo básico de teste
 
@@ -113,7 +113,6 @@ O documento precisa ter um signatário com esse e-mail.
 |---|---|---|
 | `AUTENTIQUE_API_TOKEN` | `fake-local-token` | Token Bearer do GraphQL. |
 | `AUTENTIQUE_API_USER_EMAIL` | `api-owner@example.test` | Conta assinada por `signDocument`. |
-| `DASHBOARD_TOKEN` | `local-dashboard-token` | Token Bearer da API interna do painel. |
 | `WEBHOOK_TARGET_URL` | `http://host.docker.internal:8080/api/webhooks/autentique` | Destino dos webhooks. |
 | `WEBHOOK_SECRET` | `local-mock-secret` | Segredo da assinatura HMAC. |
 | `MAX_UPLOAD_BYTES` | `10485760` | Limite do PDF, em bytes. |
